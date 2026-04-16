@@ -9,18 +9,21 @@ const categories = [
     label: "일반화장품",
     desc: "스킨케어 · 메이크업 · 헤어",
     icon: "🧴",
+    productType: "general_cosmetic",
   },
   {
     id: "functional",
     label: "기능성화장품",
     desc: "미백 · 주름 · 자외선차단",
     icon: "✨",
+    productType: "functional_cosmetic",
   },
   {
     id: "quasi",
     label: "의약외품",
     desc: "치약 · 구강청결제 · 파스",
     icon: "💊",
+    productType: "general_cosmetic",
   },
 ];
 
@@ -166,13 +169,22 @@ export default function UploadPage() {
 
       setLoadingStatus("표시광고법 위반 여부를 분석 중입니다...");
 
-      console.log("분석 대상 카테고리:", selectedCategory);
-      console.log("분석 대상 텍스트:", finalContent);
+      const category = categories.find((c) => c.id === selectedCategory);
+      const productType = category?.productType ?? "general_cosmetic";
 
-      // TODO: 실제 분석 API 연결
-      // const res = await fetch("/api/analyze", { ... })
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: finalContent, product_type: productType }),
+      });
 
-      // 테스트 중이면 우선 결과 페이지 이동 대신 콘솔/OCR 미리보기 확인
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "분석 요청 실패");
+      }
+
+      localStorage.setItem("adguard_result", JSON.stringify(data));
       router.push("/result");
     } catch (error) {
       console.error(error);

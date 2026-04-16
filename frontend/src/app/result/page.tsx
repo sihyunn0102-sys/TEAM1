@@ -3,83 +3,119 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
+// 백엔드 final_verdict → UI riskLevel 변환
+function toRiskLevel(verdict: string) {
+  switch (verdict) {
+    case "hard_block":
+      return "High";
+    case "caution":
+      return "Medium";
+    case "safe":
+      return "Low";
+    default:
+      return "N/A";
+  }
+}
+
+// 위반 구절을 원문에서 하이라이트하기 위한 청크 분리
+function buildOriginalChunks(copy: string, violations: any[]) {
+  let chunks: { text: string; isError: boolean }[] = [
+    { text: copy, isError: false },
+  ];
+
+  for (const v of violations) {
+    const phrase: string = v.phrase;
+    if (!phrase) continue;
+
+    const next: { text: string; isError: boolean }[] = [];
+    for (const chunk of chunks) {
+      if (chunk.isError) {
+        next.push(chunk);
+        continue;
+      }
+      const idx = chunk.text.indexOf(phrase);
+      if (idx === -1) {
+        next.push(chunk);
+        continue;
+      }
+      if (idx > 0)
+        next.push({ text: chunk.text.slice(0, idx), isError: false });
+      next.push({ text: phrase, isError: true });
+      if (idx + phrase.length < chunk.text.length)
+        next.push({
+          text: chunk.text.slice(idx + phrase.length),
+          isError: false,
+        });
+    }
+    chunks = next;
+  }
+
+  return chunks;
+}
+
+// verified_rewrites → suggestions 카드 형식 변환
+const STYLE_LABELS: Record<string, string> = {
+  safe: "가장 안전 🟢",
+  marketing: "자연스러움 🟡",
+  functional: "마케팅 강조 🔵",
+};
+
 export default function ResultPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [resultData, setResultData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchMockData = async () => {
-      // 1. AI 분석 연출 (2.5초 대기)
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+    // 분석 연출 (1.5초)
+    const timer = setTimeout(() => {
+      try {
+        const raw = localStorage.getItem("adguard_result");
+        if (!raw) {
+          setError("분석 결과가 없습니다. 광고 분석을 먼저 진행해주세요.");
+          setIsLoading(false);
+          return;
+        }
 
-      // 🚨 시현님이 목요일에 보내줄 가상의 데이터 (이게 통문장일 수도 있고 배열일 수도 있음)
-      const rawDataFromBackend = {
-        riskLevel: "High",
-        // 상황 A: 시현님이 통문장으로 주는 경우
-        original_sentence: "단 1회 사용만으로 안면 리프팅 100% 보장!",
-        corrected_sentence: "꾸준한 사용으로 피부 탄력 개선에 도움을 줍니다.",
-        // 상황 B: 시현님이 단어별 배열로 주는 경우 (이게 있으면 이걸 우선 사용)
-        /* spellCheck: {
-          original: [{ text: "단 1회", isError: true }, { text: " 사용", isError: false }],
-          corrected: [{ text: "꾸준한", isFix: true }, { text: " 사용", isFix: false }]
-        }, */
-        suggestions: [
-          {
-            id: 1,
-            text: "꾸준한 사용으로 피부 탄력 개선에 도움을 줄 수 있습니다.",
-            tag: "가장 안전 🟢",
-          },
-          {
-            id: 2,
-            text: "피부 탄력 케어에 도움을 주는 성분이 함유되어 있습니다.",
-            tag: "자연스러움 🟡",
-          },
-          {
-            id: 3,
-            text: "일시적인 피부 리프팅 효과를 경험해 보세요.",
-            tag: "마케팅 강조 🔵",
-          },
-        ],
-      };
+        const backend = JSON.parse(raw);
+        const copy: string = backend.copy ?? backend.ad_copy ?? "";
+        const violations: any[] = backend.violations ?? [];
+        const rewrites: any[] = backend.verified_rewrites ?? [];
 
-      // 🛡️ [유경님의 방어 로직 시작]
-      let processedSpellCheck = { original: [], corrected: [] };
+        // Before: 위반 구절 하이라이트
+        const originalChunks = buildOriginalChunks(copy, violations);
 
-      // 만약 시현님이 이미 '배열(spellCheck)'로 데이터를 잘 줬다면?
-      if (rawDataFromBackend.spellCheck) {
-        processedSpellCheck = rawDataFromBackend.spellCheck;
+        // After: safe 스타일 수정안 우선, 없으면 첫 번째
+        const safeRewrite =
+          rewrites.find((r) => r.style === "safe") ?? rewrites[0];
+        const correctedChunks = safeRewrite
+          ? [{ text: safeRewrite.text, isFix: true }]
+          : [{ text: "수정안 없음", isFix: false }];
+
+        // 추천안 카드
+        const suggestions = rewrites.map((r, i) => ({
+          id: i + 1,
+          text: r.text,
+          tag: STYLE_LABELS[r.style] ?? r.style,
+        }));
+
+        setResultData({
+          riskLevel: toRiskLevel(backend.final_verdict),
+          verdict: backend.final_verdict,
+          explanation: backend.explanation ?? "",
+          spellCheck: { original: originalChunks, corrected: correctedChunks },
+          suggestions,
+        });
+      } catch (e: any) {
+        setError("결과 데이터를 불러오는 중 오류가 발생했습니다.");
+      } finally {
+        setIsLoading(false);
       }
-      // 만약 '통문장'으로만 왔다면? -> 유경님이 만든 UI에서 쓸 수 있게 배열로 강제 변환!
-      else {
-        processedSpellCheck = {
-          original: [
-            {
-              text: rawDataFromBackend.original_sentence || "데이터 없음",
-              isError: true,
-            },
-          ],
-          corrected: [
-            {
-              text: rawDataFromBackend.corrected_sentence || "데이터 없음",
-              isFix: true,
-            },
-          ],
-        };
-      }
+    }, 1500);
 
-      // 최종적으로 우리 UI가 좋아하는 형식으로 세팅
-      setResultData({
-        ...rawDataFromBackend,
-        spellCheck: processedSpellCheck,
-      });
-
-      setIsLoading(false);
-    };
-
-    fetchMockData();
+    return () => clearTimeout(timer);
   }, []);
 
-  // 로딩 화면 (AI 스피어)
+  // 로딩 화면
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-white font-sans overflow-hidden">
@@ -123,10 +159,66 @@ export default function ResultPage() {
     );
   }
 
+  // 에러 화면
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-zinc-50 px-6">
+        <p className="text-red-500 font-semibold mb-6">{error}</p>
+        <Link
+          href="/upload"
+          className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700"
+        >
+          광고 분석하러 가기
+        </Link>
+      </div>
+    );
+  }
+
+  const riskBadgeMap: Record<
+    string,
+    { bg: string; text: string; border: string; dot: string; label: string }
+  > = {
+    High: {
+      bg: "bg-red-50",
+      text: "text-red-600",
+      border: "border-red-100",
+      dot: "bg-red-600",
+      label: "위험 단계",
+    },
+    Medium: {
+      bg: "bg-yellow-50",
+      text: "text-yellow-600",
+      border: "border-yellow-100",
+      dot: "bg-yellow-500",
+      label: "주의 단계",
+    },
+    Low: {
+      bg: "bg-green-50",
+      text: "text-green-600",
+      border: "border-green-100",
+      dot: "bg-green-500",
+      label: "안전 단계",
+    },
+    "N/A": {
+      bg: "bg-gray-50",
+      text: "text-gray-500",
+      border: "border-gray-100",
+      dot: "bg-gray-400",
+      label: "범위 외",
+    },
+  };
+  const riskBadge = riskBadgeMap[resultData.riskLevel as string] ?? {
+    bg: "bg-gray-50",
+    text: "text-gray-500",
+    border: "border-gray-100",
+    dot: "bg-gray-400",
+    label: "알 수 없음",
+  };
+
   return (
     <div className="min-h-screen bg-zinc-50 flex flex-col items-center py-12 px-6">
       <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-2xl border border-zinc-100 p-10 md:p-14">
-        {/* 헤더 & 신호등 배지 */}
+        {/* 헤더 & 배지 */}
         <div className="flex justify-between items-end mb-12">
           <div className="text-left">
             <span className="text-blue-600 font-black text-xs tracking-widest uppercase mb-2 block font-bold">
@@ -136,15 +228,24 @@ export default function ResultPage() {
               분석 결과 리포트
             </h1>
           </div>
-          {resultData.riskLevel === "High" && (
-            <div className="bg-red-50 text-red-600 px-6 py-2 rounded-full font-black text-sm border border-red-100 flex items-center gap-2">
-              <span className="w-2 h-2 bg-red-600 rounded-full animate-pulse"></span>
-              위험 단계
-            </div>
-          )}
+          <div
+            className={`${riskBadge.bg} ${riskBadge.text} px-6 py-2 rounded-full font-black text-sm border ${riskBadge.border} flex items-center gap-2`}
+          >
+            <span
+              className={`w-2 h-2 ${riskBadge.dot} rounded-full animate-pulse`}
+            ></span>
+            {riskBadge.label}
+          </div>
         </div>
 
-        {/* 비포 애프터 비교 박스 */}
+        {/* 설명 */}
+        {resultData.explanation && (
+          <div className="mb-10 p-5 bg-zinc-50 rounded-2xl border border-zinc-100 text-sm text-zinc-600 leading-relaxed">
+            {resultData.explanation}
+          </div>
+        )}
+
+        {/* 비포 애프터 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 text-left">
           <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 relative">
             <div className="absolute top-6 right-8 text-[10px] font-black text-red-300 tracking-widest uppercase">
@@ -193,32 +294,35 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {/* 추천안 카드 3개 */}
-        <div className="mb-12 text-left">
-          <h3 className="font-bold text-zinc-800 flex items-center gap-2 mb-6">
-            ✨ 다른 AI 교정 제안 둘러보기{" "}
-            <span className="text-sm font-normal text-zinc-400">
-              (클릭하여 복사)
-            </span>
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {resultData.suggestions.map((item: any) => (
-              <div
-                key={item.id}
-                className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-200 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between h-full"
-              >
-                <span className="text-[10px] font-black tracking-widest text-zinc-400 group-hover:text-blue-500 transition-colors uppercase border border-zinc-100 rounded-full px-3 py-1 inline-block w-fit">
-                  {item.tag}
-                </span>
-                <p className="mt-4 text-zinc-700 font-medium leading-relaxed">
-                  {item.text}
-                </p>
-              </div>
-            ))}
+        {/* 추천안 카드 */}
+        {resultData.suggestions.length > 0 && (
+          <div className="mb-12 text-left">
+            <h3 className="font-bold text-zinc-800 flex items-center gap-2 mb-6">
+              ✨ 다른 AI 교정 제안 둘러보기{" "}
+              <span className="text-sm font-normal text-zinc-400">
+                (클릭하여 복사)
+              </span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {resultData.suggestions.map((item: any) => (
+                <div
+                  key={item.id}
+                  onClick={() => navigator.clipboard.writeText(item.text)}
+                  className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-200 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between h-full"
+                >
+                  <span className="text-[10px] font-black tracking-widest text-zinc-400 group-hover:text-blue-500 transition-colors uppercase border border-zinc-100 rounded-full px-3 py-1 inline-block w-fit">
+                    {item.tag}
+                  </span>
+                  <p className="mt-4 text-zinc-700 font-medium leading-relaxed">
+                    {item.text}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* 내비게이션 버튼 */}
+        {/* 내비게이션 */}
         <div className="flex gap-4">
           <Link
             href="/upload"

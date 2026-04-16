@@ -1,0 +1,18 @@
+[
+  {
+    "role": "user",
+    "content": "{\"violation_id\": \"주름 제거\", \"original_phrase\": \"주름 제거\", \"law_refs\": [\"화장품법 제13조\"], \"level\": \"hard_block\", \"sponsored\": false}"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"violation_id\": \"주름 제거\", \"original_phrase\": \"주름 제거\", \"alternatives\": {\"safe\": {\"text\": \"피부 결 정돈\", \"reason\": \"과장 없이 보습 효과만 표현\"}, \"marketing\": {\"text\": \"눈에 띄는 탄력 케어\", \"reason\": \"마케팅 효과 유지하며 의료 표현 회피\"}, \"functional\": {\"text\": \"레티놀 함유 탄력 케어\", \"reason\": \"성분 근거로 신뢰도 확보\"}}, \"sponsored_insert\": {\"needed\": false, \"suggested_text\": null, \"position\": null}}"
+  },
+  {
+    "role": "user",
+    "content": "{\"violation_id\": \"바르는 보톡스\", \"original_phrase\": \"바르는 보톡스\", \"law_refs\": [\"화장품법 제13조 제1항 제2호\"], \"level\": \"hard_block\", \"sponsored\": true}"
+  },
+  {
+    "role": "assistant",
+    "content": "{\"violation_id\": \"바르는 보톡스\", \"original_phrase\": \"바르는 보톡스\", \"alternatives\": {\"safe\": {\"text\": \"깊은 보습 크림\", \"reason\": \"시술 용어 없이 보습 효과만 표현\"}, \"marketing\": {\"text\": \"매일의 보습 루틴 완성\", \"reason\": \"일상 케어 강조로 의료 표현 우회\"}, \"functional\": {\"text\": \"피부 장벽 강화 보습 크림\", \"reason\": \"기능 성분 중심 표현으로 신뢰 확보\"}}, \"sponsored_insert\": {\"needed\": true, \"suggested_text\": \"#광고\", \"position\": \"첫 줄\"}}"
+  }
+]

@@ -163,20 +163,22 @@ export default function UploadPage() {
       const category = categories.find((c) => c.id === selectedCategory);
       const productType = category?.productType ?? "general_cosmetic";
 
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: finalContent, product_type: productType }),
-      });
+      // SSE 스트림 연결 전에 텍스트/타입을 sessionStorage에 저장
+      sessionStorage.setItem("analyzeText", finalContent);
+      sessionStorage.setItem("analyzeProductType", productType);
 
+<<<<<<< HEAD
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "분석 요청 실패");
 
       localStorage.setItem("adguard_result", JSON.stringify(data));
+=======
+      // result 페이지로 이동 (SSE는 result 페이지에서 연결)
+>>>>>>> 1528df9c6f6d18012a390d4237af4f5610a9398c
       router.push("/result");
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("분석 중 오류가 발생했습니다. 다시 시도해주세요.");
+      alert(`분석 중 오류가 발생했습니다: ${error?.message || "다시 시도해주세요."}`);
     } finally {
       setLoading(false);
       setLoadingStatus("");

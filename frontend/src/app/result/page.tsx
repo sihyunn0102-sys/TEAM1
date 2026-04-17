@@ -1,20 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { 
-  AlertCircle, 
-  CheckCircle2, 
-  Info, 
-  ThumbsUp, 
-  ThumbsDown, 
-  ArrowLeft, 
-  ShieldCheck, 
-  Scale, 
-  ExternalLink 
+import {
+  AlertCircle,
+  Info,
+  ThumbsUp,
+  ThumbsDown,
+  ArrowLeft,
+  ShieldCheck,
+  Scale,
 } from "lucide-react";
 
-// --- 백엔드 연동용 유틸리티 (로직 유지) ---
+// --- 백엔드 연동용 유틸리티 ---
 function toRiskLevel(verdict: string) {
   switch (verdict) {
     case "hard_block": return "High";
@@ -50,81 +48,124 @@ const STYLE_LABELS: Record<string, string> = {
   functional: "마케팅 강조 🔵",
 };
 
-// 분석 단계 정의 (UI용)
+// 분석 단계 정의 (UI용) - 기존 디자인 유지
 const analysisPhases = [
-  { title: "L1", label: "Rule Engine", desc: "금지어 즉시 식별", detail: "블랙리스트 기반<br />시술/의약품 오인 용어 체크", duration: 800 },
-  { title: "L2", label: "Retriever", desc: "법적 근거 검색", detail: "화장품법 제13조 및<br />식약처 가이드라인 참조", duration: 1000 },
-  { title: "L3", label: "Judge", desc: "AI 종합 판정", detail: "GPT-4o 기반 위반 사항<br />및 위험도 등급 확정", duration: 1200 },
-  { title: "L4", label: "Rewriter", desc: "수정 제안 생성", detail: "안전성/마케팅 톤을 고려한<br />대안 문구 작성", duration: 1000 },
-  { title: "L5", label: "Re-Judge", desc: "최종 검증", detail: "수정안에 대한<br />2차 교차 검증 수행", duration: 800 }
+  { title: "L1", label: "Rule Engine", desc: "금지어 즉시 식별", detail: "블랙리스트 기반<br />시술/의약품 오인 용어 체크" },
+  { title: "L2", label: "Retriever", desc: "법적 근거 검색", detail: "화장품법 제13조 및<br />식약처 가이드라인 참조" },
+  { title: "L3", label: "Judge", desc: "AI 종합 판정", detail: "GPT-4o 기반 위반 사항<br />및 위험도 등급 확정" },
+  { title: "L4", label: "Rewriter", desc: "수정 제안 생성", detail: "안전성/마케팅 톤을 고려한<br />대안 문구 작성" },
+  { title: "L5", label: "Re-Judge", desc: "최종 검증", detail: "수정안에 대한<br />2차 교차 검증 수행" },
 ];
+
+// SSE step 이름 → phase index 매핑
+const stepToIndex: Record<string, number> = {
+  L1: 0, L2: 1, L3: 2, L4: 3, L5: 4,
+};
 
 export default function ResultPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadingStep, setLoadingStep] = useState(0);
   const [resultData, setResultData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ [key: number]: 'up' | 'down' | null }>({});
+  const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    // 1. 로딩 애니메이션 실행
-    let currentStep = 0;
-    const runAnimation = () => {
-      if (currentStep < analysisPhases.length) {
-        setLoadingStep(currentStep);
-        setTimeout(() => {
-          currentStep++;
-          runAnimation();
-        }, analysisPhases[currentStep].duration);
-      } else {
-        // 2. 애니메이션 종료 후 백엔드 데이터 로드 (로직 유지)
-        try {
-          const raw = localStorage.getItem("adguard_result");
-          if (!raw) {
-            setError("분석 결과가 없습니다. 광고 분석을 먼저 진행해주세요.");
-            setIsLoading(false);
-            return;
-          }
-          const backend = JSON.parse(raw);
-          const copy: string = backend.copy ?? backend.ad_copy ?? "";
-          const violations: any[] = backend.violations ?? [];
-          const rewrites: any[] = backend.verified_rewrites ?? [];
+    const text = sessionStorage.getItem("analyzeText");
+    const productType = sessionStorage.getItem("analyzeProductType") || "general_cosmetic";
 
-          const originalChunks = buildOriginalChunks(copy, violations);
-          const safeRewrite = rewrites.find((r) => r.style === "safe") ?? rewrites[0];
-          const correctedChunks = safeRewrite
-            ? [{ text: safeRewrite.text, isFix: true }]
-            : [{ text: "수정안 없음", isFix: false }];
-
-          const suggestions = rewrites.map((r, i) => ({
-            id: i + 1,
-            text: r.text,
-            tag: STYLE_LABELS[r.style] ?? r.style,
-          }));
-
-          setResultData({
-            riskLevel: toRiskLevel(backend.final_verdict),
-            explanation: backend.explanation ?? "",
-            spellCheck: { original: originalChunks, corrected: correctedChunks },
-            suggestions,
-            resultId: backend.result_id || "demo"
-          });
-        } catch (e) {
-          setError("데이터를 불러오는 중 오류가 발생했습니다.");
-        } finally {
+    // sessionStorage에 데이터 없으면 localStorage fallback (기존 방식 호환)
+    if (!text) {
+      try {
+        const raw = localStorage.getItem("adguard_result");
+        if (!raw) {
+          setError("분석 결과가 없습니다. 광고 분석을 먼저 진행해주세요.");
           setIsLoading(false);
+          return;
         }
+        const backend = JSON.parse(raw);
+        processResult(backend);
+        setIsLoading(false);
+      } catch {
+        setError("데이터를 불러오는 중 오류가 발생했습니다.");
+        setIsLoading(false);
       }
+      return;
+    }
+
+    // SSE 연결
+    const params = new URLSearchParams({ text, product_type: productType });
+    const es = new EventSource(`/api/analyze-stream?${params.toString()}`);
+    esRef.current = es;
+
+    es.addEventListener("progress", (e: any) => {
+      const data = JSON.parse(e.data);
+      const idx = stepToIndex[data.step];
+      if (idx !== undefined) setLoadingStep(idx);
+    });
+
+    es.addEventListener("result", (e: any) => {
+      const data = JSON.parse(e.data);
+      localStorage.setItem("adguard_result", JSON.stringify(data));
+      sessionStorage.removeItem("analyzeText");
+      sessionStorage.removeItem("analyzeProductType");
+      processResult(data);
+      setIsLoading(false);
+      es.close();
+    });
+
+    es.addEventListener("error", (e: any) => {
+      try {
+        const data = JSON.parse(e.data);
+        setError(data.message || "분석 중 오류가 발생했습니다.");
+      } catch {
+        setError("서버 연결에 실패했습니다.");
+      }
+      setIsLoading(false);
+      es.close();
+    });
+
+    es.onerror = () => {
+      setError("서버 연결이 끊어졌습니다. 다시 시도해주세요.");
+      setIsLoading(false);
+      es.close();
     };
-    runAnimation();
+
+    return () => { es.close(); };
   }, []);
+
+  function processResult(backend: any) {
+    const copy: string = backend.copy ?? backend.ad_copy ?? "";
+    const violations: any[] = backend.violations ?? [];
+    const rewrites: any[] = backend.verified_rewrites ?? [];
+
+    const originalChunks = buildOriginalChunks(copy, violations);
+    const safeRewrite = rewrites.find((r) => r.style === "safe") ?? rewrites[0];
+    const correctedChunks = safeRewrite
+      ? [{ text: safeRewrite.text, isFix: true }]
+      : [{ text: "수정안 없음", isFix: false }];
+
+    const suggestions = rewrites.map((r, i) => ({
+      id: i + 1,
+      text: r.text,
+      tag: STYLE_LABELS[r.style] ?? r.style,
+    }));
+
+    setResultData({
+      riskLevel: toRiskLevel(backend.final_verdict),
+      explanation: backend.explanation ?? "",
+      spellCheck: { original: originalChunks, corrected: correctedChunks },
+      suggestions,
+      resultId: backend.task_id || backend.result_id || "demo",
+    });
+  }
 
   const handleDownloadPDF = () => {
     const resultId = resultData?.resultId || "demo";
-    window.location.href = `http://localhost:8000/api/report/${resultId}`;
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    window.location.href = `${backendUrl}/report/${resultId}`;
   };
 
-  // 로딩 화면 UI 개선
+  // 로딩 화면 UI - 기존 디자인 그대로 유지
   if (isLoading) {
     return (
       <div className="flex flex-col items-center min-h-screen bg-white font-sans overflow-hidden pt-20 pb-10">
@@ -147,7 +188,7 @@ export default function ResultPage() {
           <div className="flex flex-row justify-center items-stretch gap-4">
             {analysisPhases.map((phase, index) => (
               <div key={index} className={`flex-1 transition-all duration-700 p-6 rounded-[32px] border flex flex-col items-center text-center ${
-                loadingStep === index ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white" : 
+                loadingStep === index ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white" :
                 loadingStep > index ? "bg-blue-50 border-blue-100 opacity-60" : "bg-gray-50 border-gray-100 opacity-30"
               }`}>
                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black mb-4 ${
@@ -198,7 +239,7 @@ export default function ResultPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-6">
       <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-sm border border-gray-100 p-8 md:p-14 relative overflow-hidden">
-        
+
         {/* 상단 면책 조항 */}
         <div className="absolute top-0 left-0 w-full bg-gray-900 text-gray-400 py-2.5 px-6 text-[11px] flex justify-between items-center z-10">
           <span className="flex items-center gap-1.5 font-medium">
@@ -227,7 +268,7 @@ export default function ResultPage() {
           </div>
         )}
 
-        {/* 비포 애프터 비교 섹션 */}
+        {/* 비포 애프터 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
           <div className="flex flex-col">
             <h4 className="text-gray-500 font-bold text-xs mb-3 px-2 uppercase tracking-wider">Before · 위반 소지</h4>
@@ -256,15 +297,15 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {/* 추천안 카드 섹션 */}
+        {/* 추천안 카드 */}
         <section className="mb-12">
           <h3 className="text-sm font-bold text-gray-700 mb-6 flex items-center gap-2 px-2">
             ✨ 다른 AI 교정 제안 둘러보기 <span className="text-[10px] font-normal text-gray-400">(클릭하여 복사)</span>
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {resultData.suggestions.map((item: any, idx: number) => (
-              <div 
-                key={item.id} 
+            {resultData.suggestions.map((item: any) => (
+              <div
+                key={item.id}
                 onClick={() => {
                   navigator.clipboard.writeText(item.text);
                   alert("클립보드에 복사되었습니다!");
@@ -284,7 +325,7 @@ export default function ResultPage() {
           </div>
         </section>
 
-        {/* 하단 버튼 및 가이드 */}
+        {/* 하단 버튼 */}
         <footer className="space-y-8">
           <div className="flex items-start gap-2 text-gray-400 max-w-2xl mx-auto text-center justify-center">
             <Info size={14} className="mt-0.5 shrink-0" />
@@ -297,7 +338,7 @@ export default function ResultPage() {
             <Link href="/upload" className="flex-1 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-bold hover:bg-blue-700 shadow-lg gap-2 transition-all active:scale-95">
               <ArrowLeft size={18} /> 새 이미지 검사
             </Link>
-            <button 
+            <button
               onClick={handleDownloadPDF}
               className="px-10 h-14 border border-gray-200 text-gray-600 rounded-2xl flex items-center justify-center font-bold hover:bg-gray-50 transition-all gap-2"
             >

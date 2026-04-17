@@ -100,9 +100,9 @@ export default function UploadPage() {
         formData.append("file", file);
         const ocrRes = await fetch("/api/ocr", { method: "POST", body: formData });
         const ocrData = await ocrRes.json();
-        
+
         if (ocrData.text) {
-          finalContent = text.trim() 
+          finalContent = text.trim()
             ? `${text.trim()}\n\n[이미지 추출 내용]\n${ocrData.text}`
             : ocrData.text;
         }
@@ -112,14 +112,9 @@ export default function UploadPage() {
       const category = categories.find((c) => c.id === selectedCategory);
       const productType = category?.productType ?? "general_cosmetic";
 
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: finalContent, product_type: productType }),
-      });
-
-      const data = await res.json();
-      localStorage.setItem("adguard_result", JSON.stringify(data));
+      // SSE 방식: sessionStorage에 저장 후 result 페이지에서 실시간 분석
+      sessionStorage.setItem("analyzeText", finalContent);
+      sessionStorage.setItem("analyzeProductType", productType);
       router.push("/result");
     } catch (error) {
       alert("분석 중 오류가 발생했습니다. 다시 시도해주세요.");
@@ -179,7 +174,7 @@ export default function UploadPage() {
               </div>
             </div>
 
-            {/* 우측 영역: 5-2(미리보기), 5-3(애니메이션) 반영 */}
+            {/* 우측 영역 */}
             <div className="flex flex-col gap-8">
               <div className="flex-1 flex flex-col">
                 <div className="flex items-center justify-between mb-4">

@@ -10,9 +10,16 @@ import {
   ArrowLeft,
   ShieldCheck,
   Scale,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  HelpCircle,
 } from "lucide-react";
 
-// --- 백엔드 연동용 유틸리티 ---
+// ══════════════════════════════════════════════════════════════════
+// 백엔드 연동 유틸리티
+// ══════════════════════════════════════════════════════════════════
+
 function toRiskLevel(verdict: string) {
   switch (verdict) {
     case "hard_block":
@@ -64,37 +71,35 @@ const STYLE_LABELS: Record<string, string> = {
   functional: "마케팅 강조 🔵",
 };
 
-// 분석 단계 정의 (UI용) - 기존 디자인 유지
+// ══════════════════════════════════════════════════════════════════
+// 분석 단계 정의 (v2 — 구체적 설명)
+// ══════════════════════════════════════════════════════════════════
+
 const analysisPhases = [
   {
     title: "L1",
     label: "Rule Engine",
-    desc: "금지어 즉시 식별",
-    detail: "블랙리스트 기반<br />시술/의약품 오인 용어 체크",
+    detail: "blacklist_v1.json 기반<br />80+ 핵심 키워드 즉시 식별",
   },
   {
     title: "L2",
-    label: "Retriever",
-    desc: "법적 근거 검색",
-    detail: "화장품법 제13조 및<br />식약처 가이드라인 참조",
+    label: "RAG Retriever",
+    detail: "4개 인덱스 하이브리드 검색<br />관련 법령 가이드라인 Top-K=5 추출",
   },
   {
     title: "L3",
-    label: "Judge",
-    desc: "AI 종합 판정",
-    detail: "GPT-4o 기반 위반 사항<br />및 위험도 등급 확정",
+    label: "Judge Node",
+    detail: "시스템 프롬프트 + RAG 컨텍스트<br />위반 사항 및 위험도 등급 확정",
   },
   {
     title: "L4",
-    label: "Rewriter",
-    desc: "수정 제안 생성",
-    detail: "안전성/마케팅 톤을 고려한<br />대안 문구 작성",
+    label: "Rewriter Node",
+    detail: "GPT-4o 기반 3가지 스타일 생성<br />(Safe · Marketing · Functional)",
   },
   {
     title: "L5",
-    label: "Re-Judge",
-    desc: "최종 검증",
-    detail: "수정안에 대한<br />2차 교차 검증 수행",
+    label: "Re-Judge Node",
+    detail: "수정안 L1+L3 재검토<br />안전 등급 확인 및 최대 2회 재시도",
   },
 ];
 
@@ -114,12 +119,15 @@ export default function ResultPage() {
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
+  // ══════════════════════════════════════════════════════════════
+  // SSE 연결 (v1)
+  // ══════════════════════════════════════════════════════════════
   useEffect(() => {
     const text = sessionStorage.getItem("analyzeText");
     const productType =
       sessionStorage.getItem("analyzeProductType") || "general_cosmetic";
 
-    // sessionStorage에 데이터 없으면 localStorage fallback (기존 방식 호환)
+    // sessionStorage에 데이터 없으면 localStorage fallback (이전 분석 결과 재표시)
     if (!text) {
       try {
         const raw = localStorage.getItem("adguard_result");
@@ -181,6 +189,9 @@ export default function ResultPage() {
     };
   }, []);
 
+  // ══════════════════════════════════════════════════════════════
+  // 결과 파싱
+  // ══════════════════════════════════════════════════════════════
   function processResult(backend: any) {
     const copy: string = backend.copy ?? backend.ad_copy ?? "";
     const violations: any[] = backend.violations ?? [];
@@ -196,6 +207,7 @@ export default function ResultPage() {
       id: i + 1,
       text: r.text,
       tag: STYLE_LABELS[r.style] ?? r.style,
+      style: r.style,
     }));
 
     setResultData({
@@ -207,26 +219,60 @@ export default function ResultPage() {
     });
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // 추천 문구 클릭 → After 칸에 적용 (v2)
+  // ══════════════════════════════════════════════════════════════
+  const handleSuggestionClick = (selectedText: string) => {
+    setResultData((prev: any) => ({
+      ...prev,
+      spellCheck: {
+        ...prev.spellCheck,
+        corrected: [{ text: selectedText, isFix: true }],
+      },
+    }));
+  };
 
-// 1. 기존의 handleDownloadPDF 관련 중복 코드를 모두 지우고 이 코드로 교체함
+  // ══════════════════════════════════════════════════════════════
+  // 피드백 전송 (ThumbsUp/Down)
+  // ══════════════════════════════════════════════════════════════
+  const handleFeedback = async (
+    style: string,
+    rating: 1 | -1,
+  ) => {
+    try {
+      const taskId = resultData?.resultId;
+      await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          task_id: taskId,
+          selected_style: style,
+          rating,
+        }),
+      });
+    } catch (e) {
+      console.error("피드백 전송 실패:", e);
+    }
+  };
+
+  // ══════════════════════════════════════════════════════════════
+  // PDF 다운로드 (v1 — 문법 오류 수정)
+  // ══════════════════════════════════════════════════════════════
   const handleDownloadPDF = async () => {
     try {
       const raw = localStorage.getItem("adguard_result");
       const body = raw ? JSON.parse(raw) : {};
-      
-      // API 경로를 환경에 맞게 통합 (Azure Static Web Apps 환경 고려)
-      const res = await fetch("/api/report", {
+      // Next.js API 라우트를 프록시로 사용 (로컬/배포 동일하게 동작)
+      const res = await fetch(`/api/report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(`PDF 생성 실패: ${err.detail || res.status}`);
         return;
       }
-
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -235,21 +281,13 @@ export default function ResultPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error(e);
       alert("PDF 다운로드 중 오류가 발생했습니다.");
     }
-  }; // handleDownloadPDF 끝
+  };
 
-  // 2. 그 바로 아래에 있는 "if (isLoading)" 로직부터는 그대로 두시면 됩니다.
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center min-h-screen bg-white font-sans overflow-hidden pt-20 pb-10">
-        {/* ... 로딩 UI 내용 ... */}
-      </div>
-    );
-  }
-
-  // 로딩 화면 UI - 기존 디자인 그대로 유지
+  // ══════════════════════════════════════════════════════════════
+  // 로딩 화면 (v2 디자인 + v1 실시간 단계 연동)
+  // ══════════════════════════════════════════════════════════════
   if (isLoading) {
     return (
       <div className="flex flex-col items-center min-h-screen bg-white font-sans overflow-hidden pt-20 pb-10">
@@ -272,7 +310,7 @@ export default function ResultPage() {
               AI 광고 컴플라이언스 엔진 가동 중
             </h2>
             <p className="text-gray-500 mt-2 text-sm">
-              현재 단계: {analysisPhases[loadingStep].title} -{" "}
+              현재 단계: {analysisPhases[loadingStep].title} ·{" "}
               {analysisPhases[loadingStep].label}
             </p>
           </div>
@@ -328,6 +366,9 @@ export default function ResultPage() {
     );
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // 에러 화면 (v1)
+  // ══════════════════════════════════════════════════════════════
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-zinc-50 px-6 text-center">
@@ -343,38 +384,43 @@ export default function ResultPage() {
     );
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // 위험도 뱃지 (v2 — Lucide 아이콘)
+  // ══════════════════════════════════════════════════════════════
   const riskBadgeMap: any = {
     High: {
       bg: "bg-red-50",
-      text: "text-red-600",
-      border: "border-red-100",
-      dot: "bg-red-600",
+      text: "text-red-700",
+      border: "border-red-200",
+      icon: <XCircle size={18} className="text-red-600" />,
       label: "위험 단계",
     },
     Medium: {
       bg: "bg-yellow-50",
-      text: "text-yellow-600",
-      border: "border-yellow-100",
-      dot: "bg-yellow-500",
+      text: "text-yellow-700",
+      border: "border-yellow-200",
+      icon: <AlertTriangle size={18} className="text-yellow-600" />,
       label: "주의 단계",
     },
     Low: {
       bg: "bg-green-50",
-      text: "text-green-600",
-      border: "border-green-100",
-      dot: "bg-green-500",
+      text: "text-green-700",
+      border: "border-green-200",
+      icon: <CheckCircle2 size={18} className="text-green-600" />,
       label: "안전 단계",
     },
-    "N/A": {
-      bg: "bg-gray-50",
-      text: "text-gray-500",
-      border: "border-gray-100",
-      dot: "bg-gray-400",
-      label: "분석 불가",
-    },
   };
-  const riskBadge = riskBadgeMap[resultData.riskLevel] || riskBadgeMap["N/A"];
+  const riskBadge = riskBadgeMap[resultData.riskLevel] || {
+    bg: "bg-gray-50",
+    text: "text-gray-500",
+    border: "border-gray-200",
+    icon: <HelpCircle size={18} />,
+    label: "분석 불가",
+  };
 
+  // ══════════════════════════════════════════════════════════════
+  // 결과 화면
+  // ══════════════════════════════════════════════════════════════
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-6">
       <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-sm border border-gray-100 p-8 md:p-14 relative overflow-hidden">
@@ -400,11 +446,9 @@ export default function ResultPage() {
             </h1>
           </div>
           <div
-            className={`${riskBadge.bg} ${riskBadge.text} px-5 py-2 rounded-full font-bold text-sm border ${riskBadge.border} flex items-center gap-2`}
+            className={`${riskBadge.bg} ${riskBadge.text} ${riskBadge.border} px-5 py-2.5 rounded-full font-bold text-sm border flex items-center gap-2.5 shadow-sm`}
           >
-            <span
-              className={`w-2 h-2 ${riskBadge.dot} rounded-full animate-pulse`}
-            ></span>
+            {riskBadge.icon}
             {riskBadge.label}
           </div>
         </div>
@@ -417,22 +461,22 @@ export default function ResultPage() {
           </div>
         )}
 
-        {/* 비포 애프터 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 text-left">
+        {/* Before / After */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
           <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 relative">
-            <div className="absolute top-6 right-8 text-[10px] font-black text-red-300 tracking-widest uppercase">
+            <div className="absolute top-6 right-8 text-[10px] font-black text-red-300 uppercase tracking-widest">
               Before
             </div>
-            <h4 className="text-zinc-400 font-bold text-sm mb-6">
+            <h4 className="text-zinc-400 font-bold text-sm mb-6 text-left">
               수정 전 위반 문구
             </h4>
-            <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-600 pr-2">
+            <div className="h-48 overflow-y-auto text-lg text-zinc-600 text-left leading-relaxed">
               {resultData.spellCheck.original.map((chunk: any, i: number) => (
                 <span
                   key={i}
                   className={
                     chunk.isError
-                      ? "bg-red-100 text-red-700 px-1 rounded-md line-through decoration-red-300 decoration-2 mx-0.5"
+                      ? "bg-red-100 text-red-700 line-through mx-0.5"
                       : ""
                   }
                 >
@@ -441,15 +485,14 @@ export default function ResultPage() {
               ))}
             </div>
           </div>
-
           <div className="bg-blue-50/30 rounded-[32px] p-8 border border-blue-100/50 relative">
-            <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 tracking-widest uppercase">
+            <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 uppercase tracking-widest">
               After
             </div>
-            <h4 className="text-blue-600 font-bold text-sm mb-6">
+            <h4 className="text-blue-600 font-bold text-sm mb-6 text-left">
               AI 정화 완료
             </h4>
-            <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-800 pr-2">
+            <div className="h-48 overflow-y-auto text-lg text-zinc-800 text-left leading-relaxed">
               {resultData.spellCheck.corrected.map((chunk: any, i: number) => (
                 <span
                   key={i}
@@ -466,7 +509,7 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {/* 홍보 배너 */}
+        {/* AD 광고 배너 (v2) */}
         <div className="mb-12 w-full overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 flex flex-col items-center justify-center p-6 cursor-pointer hover:shadow-md transition-all group">
           <span className="text-[10px] text-gray-400 font-bold bg-gray-200 px-2 py-0.5 rounded-sm mb-2 self-start">
             AD
@@ -479,33 +522,58 @@ export default function ResultPage() {
           </p>
         </div>
 
-        {/* 추천안 카드 */}
+        {/* 추천안 카드 — v2 클릭 적용 + v1 평가 버튼 */}
         {resultData.suggestions.length > 0 && (
           <div className="mb-12 text-left">
             <h3 className="font-bold text-zinc-800 flex items-center gap-2 mb-6">
               ✨ 다른 AI 교정 제안 둘러보기{" "}
               <span className="text-sm font-normal text-zinc-400">
-                (클릭하여 복사)
+                (클릭하여 위 칸에 적용)
               </span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {resultData.suggestions.map((item: any, index: number) => (
                 <div
                   key={item.id}
-                  onClick={() => navigator.clipboard.writeText(item.text)}
-                  className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-200 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between h-full"
+                  onClick={() => handleSuggestionClick(item.text)}
+                  className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-400 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between h-full active:scale-95"
                 >
-                  <span className="text-xs font-black tracking-widest text-blue-600 bg-blue-50 border border-blue-100 rounded-md px-3 py-1 inline-block w-fit">
-                    추천 문구 {index + 1}
-                  </span>
-                  <p className="mt-4 text-zinc-700 font-medium leading-relaxed">
-                    {item.text}
-                  </p>
+                  <div>
+                    <span className="text-xs font-black text-blue-600 bg-blue-50 border border-blue-100 rounded-md px-3 py-1 inline-block w-fit">
+                      {item.tag || `추천 문구 ${index + 1}`}
+                    </span>
+                    <p className="mt-4 text-zinc-700 font-medium leading-relaxed">
+                      {item.text}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 border-t border-gray-50 pt-4 mt-4">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleFeedback(item.style, 1);
+                      }}
+                      className="p-1.5 rounded-full text-gray-300 hover:bg-gray-100 hover:text-blue-500 transition-colors"
+                      aria-label="좋아요"
+                    >
+                      <ThumbsUp size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleFeedback(item.style, -1);
+                      }}
+                      className="p-1.5 rounded-full text-gray-300 hover:bg-gray-100 hover:text-red-500 transition-colors"
+                      aria-label="별로예요"
+                    >
+                      <ThumbsDown size={14} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
+
         {/* 하단 버튼 */}
         <footer className="space-y-8">
           <div className="flex items-start gap-2 text-gray-400 max-w-2xl mx-auto text-center justify-center">

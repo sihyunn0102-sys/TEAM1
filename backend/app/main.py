@@ -444,6 +444,33 @@ async def get_history(limit: int = 20):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"이력 조회 오류: {e}")
 
+@app.post("/report", tags=["report"])
+async def post_report(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON 파싱 오류")
+
+    task_id = body.get("task_id") or str(uuid.uuid4())
+
+    entity = {
+        "text": body.get("copy") or body.get("ad_copy") or "",
+        "verdict": body.get("final_verdict", ""),
+        "risk_summary": body.get("explanation", ""),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "full_result": json.dumps(body, ensure_ascii=False),
+    }
+
+    try:
+        from report_generator import generate_report
+        pdf_path = generate_report(task_id, entity)
+        return FileResponse(
+            path=pdf_path,
+            media_type="application/pdf",
+            filename=f"adguard_report_{task_id[:8]}.pdf",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF 생성 오류: {e}")
 
 # ── GET /report/{task_id} ─────────────────────────────────────────────
 @app.get("/report/{task_id}", tags=["report"])

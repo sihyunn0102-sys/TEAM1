@@ -207,7 +207,6 @@ export default function ResultPage() {
     });
   }
 
-<<<<<<< HEAD
   const handleDownloadPDF = async () => {
     const backendUrl =
       process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -233,7 +232,7 @@ export default function ResultPage() {
       URL.revokeObjectURL(url);
     } catch (e) {
       alert("PDF 다운로드 중 오류가 발생했습니다.");
-=======
+
 const handleDownloadPDF = async () => {
     try {
       const raw = localStorage.getItem("adguard_result");
@@ -247,7 +246,6 @@ const handleDownloadPDF = async () => {
       const err = await res.json().catch(() => ({}));
       alert(`PDF 생성 실패: ${err.detail || res.status}`);
       return;
->>>>>>> eced0fdd331fbcc18dbfbd2d54156c5af679749d
     }
   };
 

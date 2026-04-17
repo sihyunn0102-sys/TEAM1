@@ -208,30 +208,46 @@ export default function ResultPage() {
   }
 
 
-const handleDownloadPDF = async () => {
+// 1. 기존의 handleDownloadPDF 관련 중복 코드를 모두 지우고 이 코드로 교체함
+  const handleDownloadPDF = async () => {
     try {
       const raw = localStorage.getItem("adguard_result");
       const body = raw ? JSON.parse(raw) : {};
-      const res = await fetch(`/api/report`, {
+      
+      // API 경로를 환경에 맞게 통합 (Azure Static Web Apps 환경 고려)
+      const res = await fetch("/api/report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      alert(`PDF 생성 실패: ${err.detail || res.status}`);
-      return;
-    }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `adguard_report_${(body.task_id || "result").slice(0, 8)}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
-  } catch (e) {
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`PDF 생성 실패: ${err.detail || res.status}`);
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `adguard_report_${(body.task_id || "result").slice(0, 8)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
       alert("PDF 다운로드 중 오류가 발생했습니다.");
-  };
+    }
+  }; // handleDownloadPDF 끝
+
+  // 2. 그 바로 아래에 있는 "if (isLoading)" 로직부터는 그대로 두시면 됩니다.
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center min-h-screen bg-white font-sans overflow-hidden pt-20 pb-10">
+        {/* ... 로딩 UI 내용 ... */}
+      </div>
+    );
+  }
 
   // 로딩 화면 UI - 기존 디자인 그대로 유지
   if (isLoading) {

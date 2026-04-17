@@ -160,11 +160,10 @@ export default function ResultPage() {
   }
 
 const handleDownloadPDF = async () => {
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-  try {
-    const raw = localStorage.getItem("adguard_result");
-    const body = raw ? JSON.parse(raw) : {};
-    const res = await fetch(`${backendUrl}/report`, {
+    try {
+      const raw = localStorage.getItem("adguard_result");
+      const body = raw ? JSON.parse(raw) : {};
+      const res = await fetch(`/api/report`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

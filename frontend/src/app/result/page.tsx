@@ -1,151 +1,409 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-interface AnalysisStep {
-  step: number;
-  message: string;
-  status: "pending" | "loading" | "complete" | "error";
+// 카테고리 타입 정의
+interface Category {
+  id: string;
+  label: string;
+  desc: string;
+  icon: string;
+  productType: string;
 }
 
-export default function ResultPage() {
-  const router = useRouter();
-  const [text, setText] = useState<string>("");
-  const [productType, setProductType] = useState<string>("");
-  const [isAnalyzing, setIsAnalyzing] = useState(true);
-  const [result, setResult] = useState<any>(null);
-  
-  const [steps, setSteps] = useState<AnalysisStep[]>([
-    { step: 1, message: "L1: 광고 금지 표현 검사 중...", status: "pending" },
-    { step: 2, message: "L2: 관련 법령 데이터 조회 중...", status: "pending" },
-    { step: 3, message: "L3: 위반 여부 정밀 분석 중...", status: "pending" },
-    { step: 4, message: "L4: 대체 문구 생성 및 교정 중...", status: "pending" },
-    { step: 5, message: "L5: 최종 보고서 작성 중...", status: "pending" },
-  ]);
+const categories: Category[] = [
+  {
+    id: "general",
+    label: "일반화장품",
+    desc: "스킨케어 · 메이크업 · 헤어",
+    icon: "🧴",
+    productType: "general_cosmetic",
+  },
+  {
+    id: "functional",
+    label: "기능성화장품",
+    desc: "미백 · 주름 · 자외선차단",
+    icon: "✨",
+    productType: "functional_cosmetic",
+  },
+];
 
-  const eventSourceRef = useRef<EventSource | null>(null);
+function Stepper({ current }: { current: number }) {
+  const steps = ["제품 유형 선택", "내용 입력", "분석 시작"];
+
+  return (
+    <div className="flex items-center justify-center gap-0 mb-10">
+      {steps.map((label, i) => {
+        const idx = i + 1;
+        const isDone = current > idx;
+        const isActive = current === idx;
+
+        return (
+          <div key={label} className="flex items-center">
+            <div className="flex flex-col items-center">
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-200
+                  ${
+                    isDone
+                      ? "bg-blue-600 text-white"
+                      : isActive
+                        ? "bg-blue-600 text-white ring-4 ring-blue-100"
+                        : "bg-gray-100 text-gray-400"
+                  }`}
+              >
+                {isDone ? "✓" : idx}
+              </div>
+
+              <span
+                className={`mt-1.5 text-xs font-medium whitespace-nowrap ${
+                  isActive || isDone ? "text-blue-600" : "text-gray-400"
+                }`}
+              >
+                {label}
+              </span>
+            </div>
+
+            {i < steps.length - 1 && (
+              <div
+                className={`w-20 h-0.5 mb-5 mx-1 transition-all duration-200 ${
+                  current > idx ? "bg-blue-600" : "bg-gray-200"
+                }`}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function UploadPage() {
+  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
+
+  const [loading, setLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState("");
+  const [ocrPreview, setOcrPreview] = useState("");
+
+  const autoResize = useCallback(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${Math.max(ta.scrollHeight, 160)}px`;
+  }, []);
 
   useEffect(() => {
-    const storedText = sessionStorage.getItem("analyzeText");
-    const storedType = sessionStorage.getItem("analyzeProductType");
+    autoResize();
+  }, [text, autoResize]);
 
-    if (!storedText) {
-      alert("분석할 데이터가 없습니다. 메인 페이지로 이동합니다.");
-      router.push("/");
+  // 컴포넌트 언마운트 시 메모리 해제
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrl) URL.revokeObjectURL(imagePreviewUrl);
+    };
+  }, [imagePreviewUrl]);
+
+  const createPreview = (targetFile: File) => {
+    if (targetFile.type.startsWith("image/")) {
+      const url = URL.createObjectURL(targetFile);
+      setImagePreviewUrl(url);
+    } else {
+      setImagePreviewUrl(null);
+    }
+  };
+
+  const clearPreview = () => {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+      setImagePreviewUrl(null);
+    }
+  };
+
+  const validateFile = (targetFile: File) => {
+    const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "application/pdf"];
+    if (!allowedTypes.includes(targetFile.type)) {
+      alert("PNG, JPG, JPEG, PDF 파일만 업로드 가능합니다.");
+      return false;
+    }
+    return true;
+  };
+
+  const handleFileSelect = (targetFile: File | null) => {
+    if (!targetFile) return;
+    if (!validateFile(targetFile)) return;
+    clearPreview();
+    setFile(targetFile);
+    createPreview(targetFile);
+    setOcrPreview("");
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped) handleFileSelect(dropped);
+  };
+
+  const analyzeOCR = async (targetFile: File) => {
+    setLoadingStatus("이미지에서 텍스트를 추출하고 있습니다...");
+    const formData = new FormData();
+    formData.append("file", targetFile);
+
+    const response = await fetch("/api/ocr", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "OCR 요청 실패");
+    return data.text as string;
+  };
+
+  const handleAnalyze = async () => {
+    if (!selectedCategory) {
+      alert("제품 유형을 선택하세요.");
+      return;
+    }
+    if (!text.trim() && !file) {
+      alert("텍스트를 입력하거나 파일을 업로드하세요.");
+      return;
+    }
+    if (!agreed) {
+      alert("분석 데이터 처리 방침에 동의해주세요.");
       return;
     }
 
-    setText(storedText);
-    setProductType(storedType || "general_cosmetic");
-  }, [router]);
+    const category = categories.find((c) => c.id === selectedCategory);
+    const productType = category?.productType ?? "general_cosmetic";
 
-  useEffect(() => {
-    if (!text || !isAnalyzing) return;
-
-    const params = new URLSearchParams({
-      text: text,
-      product_type: productType,
-    });
-
-    // 핵심 수정: 호출 주소를 파일 위치와 동일하게 '/api/analyze-stream'으로 고정
-    const es = new EventSource(`/api/analyze-stream?${params.toString()}`);
-    eventSourceRef.current = es;
-
-    es.onmessage = (event) => {
+    if (file && !ocrPreview) {
+      setLoading(true);
       try {
-        const data = JSON.parse(event.data);
-        
-        if (data.step) {
-          setSteps((prev) =>
-            prev.map((s) => {
-              if (s.step < data.step) return { ...s, status: "complete" };
-              if (s.step === data.step) return { ...s, status: "loading" };
-              return s;
-            })
-          );
-        }
-
-        if (data.result) {
-          setResult(data.result);
-          setSteps((prev) => prev.map((s) => ({ ...s, status: "complete" })));
-          setIsAnalyzing(false);
-          es.close();
-        }
-      } catch (err) {
-        console.error("데이터 파싱 에러:", err);
+        const ocrText = await analyzeOCR(file);
+        setOcrPreview(ocrText);
+      } catch (error: unknown) {
+        const msg = error instanceof Error ? error.message : "알 수 없는 에러";
+        console.error("OCR 상세 에러:", msg);
+        alert(`OCR 분석 중 오류가 발생했습니다: ${msg}`);
+      } finally {
+        setLoading(false);
+        setLoadingStatus("");
       }
-    };
+      return;
+    }
 
-    es.onerror = (err) => {
-      console.error("SSE 연결 에러:", err);
-      setSteps((prev) =>
-        prev.map((s) => (s.status === "loading" ? { ...s, status: "error" } : s))
-      );
-      setIsAnalyzing(false);
-      es.close();
-    };
+    let finalContent = "";
+    if (file && ocrPreview) {
+      finalContent = ocrPreview;
+    } else {
+      finalContent = text.trim();
+    }
 
-    return () => {
-      es.close();
-    };
-  }, [text, productType, isAnalyzing]);
+    if (!finalContent) {
+      alert("분석할 내용이 없습니다.");
+      return;
+    }
+
+    setLoading(true);
+    setLoadingStatus("분석 페이지로 이동 중...");
+    try {
+      localStorage.removeItem("adguard_result");
+      sessionStorage.setItem("analyzeText", finalContent);
+      sessionStorage.setItem("analyzeProductType", productType);
+      router.push("/result");
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "이동 실패";
+      console.error("이동 중 에러:", msg);
+      alert(`분석 준비 중 오류가 발생했습니다: ${msg}`);
+      setLoading(false);
+      setLoadingStatus("");
+    }
+  };
+
+  const isReady = !!selectedCategory && (!!text.trim() || !!file) && agreed;
+  const currentStep = !selectedCategory ? 1 : !(text.trim() || file) ? 2 : 3;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-6">
-      <div className="max-w-3xl mx-auto">
-        <h1 className="text-2xl font-bold mb-8 text-center text-gray-800">광고 문구 분석중</h1>
-
-        <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100 mb-8">
-          <div className="space-y-4">
-            {steps.map((s) => (
-              <div key={s.step} className="flex items-center gap-4">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold
-                  ${s.status === "complete" ? "bg-green-500 text-white" : 
-                    s.status === "loading" ? "bg-blue-500 text-white animate-pulse" : 
-                    s.status === "error" ? "bg-red-500 text-white" : "bg-gray-200 text-gray-500"}`}
-                >
-                  {s.status === "complete" ? "✓" : s.step}
-                </div>
-                <span className={`text-sm ${s.status === "loading" ? "font-bold text-blue-600" : "text-gray-600"}`}>
-                  {s.message}
-                </span>
-                {s.status === "loading" && (
-                  <div className="ml-auto w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                )}
-              </div>
-            ))}
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-6 py-12">
+      <div className="w-full max-w-4xl">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-gray-200 text-xs text-gray-400 mb-5 shadow-sm">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            Azure AI 기반 광고 컴플라이언스 도구
           </div>
+          <h1 className="text-4xl font-extrabold text-gray-900 mb-2 tracking-tight">광고청정기</h1>
+          <p className="text-gray-500 text-base">광고 문구를 입력하거나 파일을 업로드하면 위반 여부를 분석해드려요.</p>
         </div>
 
-        {!isAnalyzing && result && (
-          <div className="bg-white rounded-2xl shadow-md p-8 border border-blue-100 animate-in fade-in duration-500">
-            <h2 className="text-xl font-bold mb-4 text-blue-800">분석 결과 리포트</h2>
-            <div className="prose prose-blue max-w-none">
-              <div className="p-4 bg-blue-50 rounded-xl text-gray-700 whitespace-pre-wrap">
-                {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
+        <Stepper current={currentStep} />
+
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-6">
+              <div>
+                <p className="text-sm font-semibold text-gray-700 mb-3">
+                  제품 유형 선택 <span className="text-blue-500">*</span>
+                </p>
+                <div className="grid grid-cols-1 gap-3">
+                  {categories.map((cat) => {
+                    const isSelected = selectedCategory === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setSelectedCategory(cat.id)}
+                        className={`group flex items-center gap-3 w-full p-3 rounded-xl border-2 text-left transition-all duration-150
+                          ${isSelected ? "border-blue-500 bg-blue-50" : "border-gray-100 bg-gray-50 hover:border-blue-200 hover:bg-blue-50/40"}`}
+                      >
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-all duration-150
+                            ${isSelected ? "bg-blue-100" : "bg-gray-100 group-hover:bg-blue-100"}`}>
+                          {cat.icon}
+                        </div>
+                        <div className="flex-1">
+                          <div className={`text-sm font-bold transition-colors ${isSelected ? "text-blue-700" : "text-gray-800"}`}>
+                            {cat.label}
+                          </div>
+                          <div className="text-xs text-gray-400 mt-0.5">{cat.desc}</div>
+                        </div>
+                        {isSelected && (
+                          <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-bold">✓</div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-700 mb-3">텍스트 직접 입력</p>
+                <textarea
+                  ref={textareaRef}
+                  value={text}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    autoResize();
+                  }}
+                  placeholder="광고 문구를 입력하세요&#10;예) 단 1회만에 피부 30% 개선 보장!"
+                  style={{ minHeight: "160px", resize: "none", overflow: "hidden" }}
+                  className="w-full p-4 rounded-xl border border-gray-200 text-sm transition-all focus:outline-none focus:border-blue-400 bg-gray-50 text-gray-700 focus:bg-white"
+                />
+                {text && <p className="text-xs text-gray-300 mt-1 text-right">{text.length}자</p>}
               </div>
             </div>
-            <button 
-              onClick={() => router.push("/")}
-              className="w-full mt-6 py-3 bg-gray-800 text-white rounded-xl font-bold hover:bg-gray-900 transition-all"
-            >
-              다른 문구 분석하기
-            </button>
-          </div>
-        )}
 
-        {!isAnalyzing && !result && (
-          <div className="text-center">
-            <p className="text-red-500 mb-4">분석 중 오류가 발생했습니다. 서버 연결을 확인해주세요.</p>
-            <button 
-              onClick={() => router.push("/")}
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg"
-            >
-              다시 시도하기
-            </button>
+            <div className="flex flex-col gap-5">
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-gray-700">파일 업로드</p>
+                  <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">PNG · JPG · PDF</span>
+                </div>
+                <div
+                  onClick={() => { if (!file) fileInputRef.current?.click(); }}
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                  className={`relative rounded-2xl border-2 border-dashed flex flex-col items-center justify-center transition-all duration-200 cursor-pointer
+                    ${isDragging ? "border-blue-500 bg-blue-50 scale-[1.01] shadow-md" : file ? "border-blue-300 bg-blue-50/50" : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/30"}`}
+                  style={{ minHeight: "200px" }}
+                >
+                  <input ref={fileInputRef} type="file" className="hidden" accept=".png,.jpg,.jpeg,.pdf"
+                    onChange={(e) => handleFileSelect(e.target.files?.[0] || null)} />
+                  
+                  {file ? (
+                    <div className="text-center space-y-3 px-4 py-4 w-full">
+                      {imagePreviewUrl ? (
+                        <div className="mx-auto w-32 h-20 rounded-xl overflow-hidden border border-blue-200 shadow-sm">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={imagePreviewUrl} alt="미리보기" className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center text-3xl mx-auto">📋</div>
+                      )}
+                      <div>
+                        <p className="text-sm text-gray-700 font-semibold max-w-[200px] truncate mx-auto">{file.name}</p>
+                        <p className="text-xs text-gray-400 mt-1">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                      </div>
+                      <div className="flex items-center justify-center gap-2">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="text-xs text-blue-500 hover:text-blue-600 underline">파일 변경</button>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); clearPreview(); setFile(null); setOcrPreview(""); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="text-xs text-red-400 hover:text-red-500 underline">삭제</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center space-y-3 px-6 py-6">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-3xl mx-auto transition-all duration-200 ${isDragging ? "bg-blue-200 scale-110" : "bg-gray-100"}`}>
+                        {isDragging ? "📂" : "⬆"}
+                      </div>
+                      <p className="text-sm text-gray-600 font-medium">{isDragging ? "여기에 놓으세요!" : "이미지 · PDF 드래그 또는 클릭"}</p>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700">파일 선택</button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {ocrPreview && (
+                <div className="p-4 rounded-xl bg-gray-50 border border-gray-200">
+                  <p className="text-sm font-semibold text-gray-700 mb-2">OCR 결과 미리보기</p>
+                  <pre className="text-xs text-gray-600 whitespace-pre-wrap break-words">{ocrPreview}</pre>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100">
+                  <span className="text-xs">⚠️</span>
+                  <p className="text-xs text-gray-400 leading-relaxed">분석 데이터는 Azure AI를 통해 처리되며 법적 효력이 없습니다.</p>
+                </div>
+
+                <label className="flex items-start gap-2.5 cursor-pointer group">
+                  <div className="relative mt-0.5 shrink-0">
+                    <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="sr-only" />
+                    <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all duration-150
+                        ${agreed ? "bg-blue-600 border-blue-600" : "bg-white border-gray-300 group-hover:border-blue-400"}`}>
+                      {agreed && (
+                        <svg className="w-2.5 h-2.5 text-white" viewBox="0 0 10 10" fill="none">
+                          <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    <span className="text-blue-500 font-semibold">[필수]</span> 분석에 사용된 데이터는 서비스 종료 시 즉시 파기되며, AI 학습용으로 활용되지 않음에 동의합니다.
+                  </p>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={handleAnalyze}
+                  disabled={!isReady || loading}
+                  className={`w-full py-4 rounded-xl text-sm font-bold transition-all duration-150 flex items-center justify-center gap-2
+                    ${isReady && !loading ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md" : "bg-gray-100 text-gray-300 cursor-not-allowed"}`}
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      {loadingStatus}
+                    </>
+                  ) : file && !ocrPreview ? (
+                    "OCR 분석 시작 →"
+                  ) : file && ocrPreview ? (
+                    "이 텍스트로 광고 분석 시작 →"
+                  ) : (
+                    "광고 분석 시작 →"
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

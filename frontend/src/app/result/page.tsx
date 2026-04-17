@@ -148,7 +148,7 @@ export default function ResultPage() {
 
     // SSE 연결
     const params = new URLSearchParams({ text, product_type: productType });
-    const es = new EventSource(`/api/analyze-stream?${params.toString()}`);
+    const es = new EventSource(`/api/feedback?${params.toString()}`);
     esRef.current = es;
 
     es.addEventListener("progress", (e: any) => {

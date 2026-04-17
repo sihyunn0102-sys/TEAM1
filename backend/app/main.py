@@ -1,4 +1,4 @@
-"""
+1"""
 app/main.py  ── FastAPI 진입점
 ────────────────────────────────────────────────────────────
 AdGuard 백엔드 API 서버.
@@ -444,6 +444,7 @@ async def get_history(limit: int = 20):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"이력 조회 오류: {e}")
 
+# ── POST /report ───────────────────────────────────────────────────────
 @app.post("/report", tags=["report"])
 async def post_report(request: Request):
     try:

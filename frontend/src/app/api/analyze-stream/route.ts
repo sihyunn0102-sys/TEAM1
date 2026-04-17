@@ -2,10 +2,11 @@ import { NextRequest } from "next/server";
 
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { text, product_type } = body;
+    const { searchParams } = new URL(req.url);
+    const text = searchParams.get("text") || "";
+    const product_type = searchParams.get("product_type") || "general_cosmetic";
 
     const params = new URLSearchParams({ text, product_type });
     const backendRes = await fetch(

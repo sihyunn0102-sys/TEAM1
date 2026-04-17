@@ -199,9 +199,11 @@ export default function UploadPage() {
       try {
         const ocrText = await analyzeOCR(file);
         setOcrPreview(ocrText);
-      } catch (error) {
-        console.error(error);
-        alert("OCR 분석 중 오류가 발생했습니다. 다시 시도해주세요.");
+      } catch (error: any) {
+        console.error("상세 에러 내역:", error);
+        alert(
+          `OCR 분석 중 오류가 발생했습니다: ${error?.message || "알 수 없는 오류"}`,
+        );
       } finally {
         setLoading(false);
         setLoadingStatus("");
@@ -227,16 +229,18 @@ export default function UploadPage() {
     setLoading(true);
     setLoadingStatus("분석 페이지로 이동 중...");
     try {
-      // 분석은 result 페이지에서 SSE로 진행 (L1~L5 단계별 로딩 화면 표시)
+      // 실제 분석은 /result 페이지에서 SSE(/api/analyze-stream)로 진행 (L1~L5 단계별 로딩 화면 표시)
       // 이전 결과가 남아있으면 제거하여 stale 결과 방지
       localStorage.removeItem("adguard_result");
       sessionStorage.setItem("analyzeText", finalContent);
       sessionStorage.setItem("analyzeProductType", productType);
 
       router.push("/result");
-    } catch (error) {
-      console.error(error);
-      alert("분석 준비 중 오류가 발생했습니다. 다시 시도해주세요.");
+    } catch (error: any) {
+      console.error("상세 에러 내역:", error);
+      alert(
+        `분석 준비 중 오류가 발생했습니다: ${error?.message || "알 수 없는 오류"}`,
+      );
       setLoading(false);
       setLoadingStatus("");
     }

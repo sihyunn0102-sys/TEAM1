@@ -178,17 +178,23 @@ export default function UploadPage() {
         body: JSON.stringify({ text: finalContent, product_type: productType }),
       });
 
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || "서버 응답 파싱 실패");
+      }
 
       if (!res.ok) {
-        throw new Error(data.error || "분석 요청 실패");
+        throw new Error(data.error || data.detail || "분석 요청 실패");
       }
 
       localStorage.setItem("adguard_result", JSON.stringify(data));
       router.push("/result");
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("분석 중 오류가 발생했습니다. 다시 시도해주세요.");
+      alert(`분석 중 오류가 발생했습니다: ${error?.message || "다시 시도해주세요."}`);
     } finally {
       setLoading(false);
       setLoadingStatus("");

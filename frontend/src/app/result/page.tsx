@@ -121,7 +121,7 @@ export default function ResultPage() {
 
   const handleDownloadPDF = () => {
     const resultId = resultData?.resultId || "demo";
-    window.location.href = `http://localhost:8000/report/${resultId};
+    window.location.href = `${process.env.NEXT_PUBLIC_BACKEND_URL}/report/${resultId}`;
   };
 
   // 로딩 화면 UI 개선

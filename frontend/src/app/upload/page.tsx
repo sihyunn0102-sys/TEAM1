@@ -222,9 +222,9 @@ export default function UploadPage() {
 
       localStorage.setItem("adguard_result", JSON.stringify(data));
       router.push("/result");
-    } catch (error) {
-      console.error(error);
-      alert("분석 중 오류가 발생했습니다. 다시 시도해주세요.");
+    } catch (error: any) {
+      console.error("상세 에러 내역:", error); // 터미널/콘솔에서 에러 로그 확인
+      alert(`분석 중 오류가 발생했습니다: ${error?.message || "알 수 없는 오류"}`);
     } finally {
       setLoading(false);
       setLoadingStatus("");

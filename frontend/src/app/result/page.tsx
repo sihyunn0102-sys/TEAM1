@@ -16,7 +16,6 @@ export default function ResultPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [result, setResult] = useState<any>(null);
   
-  // 단계별 상태 관리 (L1~L5)
   const [steps, setSteps] = useState<AnalysisStep[]>([
     { step: 1, message: "L1: 광고 금지 표현 검사 중...", status: "pending" },
     { step: 2, message: "L2: 관련 법령 데이터 조회 중...", status: "pending" },
@@ -28,7 +27,6 @@ export default function ResultPage() {
   const eventSourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    // 1. SessionStorage에서 데이터 가져오기
     const storedText = sessionStorage.getItem("analyzeText");
     const storedType = sessionStorage.getItem("analyzeProductType");
 
@@ -45,22 +43,19 @@ export default function ResultPage() {
   useEffect(() => {
     if (!text || !isAnalyzing) return;
 
-    // 2. SSE 연결 설정
     const params = new URLSearchParams({
       text: text,
       product_type: productType,
     });
 
-    // 아까 만든 GET 전용 API 경로 호출 (/api/analyze-stream)
+    // 핵심 수정: 호출 주소를 파일 위치와 동일하게 '/api/analyze-stream'으로 고정
     const es = new EventSource(`/api/analyze-stream?${params.toString()}`);
     eventSourceRef.current = es;
 
     es.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log("분석 업데이트:", data);
-
-        // 단계(Step) 업데이트 로직
+        
         if (data.step) {
           setSteps((prev) =>
             prev.map((s) => {
@@ -71,7 +66,6 @@ export default function ResultPage() {
           );
         }
 
-        // 최종 결과 수신 (Step 5 완료 시)
         if (data.result) {
           setResult(data.result);
           setSteps((prev) => prev.map((s) => ({ ...s, status: "complete" })));
@@ -84,7 +78,7 @@ export default function ResultPage() {
     };
 
     es.onerror = (err) => {
-      console.error("SSE 연결 에러 (405 또는 500 확인):", err);
+      console.error("SSE 연결 에러:", err);
       setSteps((prev) =>
         prev.map((s) => (s.status === "loading" ? { ...s, status: "error" } : s))
       );
@@ -102,7 +96,6 @@ export default function ResultPage() {
       <div className="max-w-3xl mx-auto">
         <h1 className="text-2xl font-bold mb-8 text-center text-gray-800">광고 문구 분석중</h1>
 
-        {/* 단계별 로딩 상태 표시창 */}
         <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100 mb-8">
           <div className="space-y-4">
             {steps.map((s) => (
@@ -125,13 +118,11 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {/* 최종 결과 출력 영역 */}
         {!isAnalyzing && result && (
           <div className="bg-white rounded-2xl shadow-md p-8 border border-blue-100 animate-in fade-in duration-500">
             <h2 className="text-xl font-bold mb-4 text-blue-800">분석 결과 리포트</h2>
             <div className="prose prose-blue max-w-none">
               <div className="p-4 bg-blue-50 rounded-xl text-gray-700 whitespace-pre-wrap">
-                {/* 백엔드에서 받은 결과 데이터 매핑 */}
                 {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
               </div>
             </div>
@@ -144,7 +135,6 @@ export default function ResultPage() {
           </div>
         )}
 
-        {/* 에러 발생 시 안내 */}
         {!isAnalyzing && !result && (
           <div className="text-center">
             <p className="text-red-500 mb-4">분석 중 오류가 발생했습니다. 서버 연결을 확인해주세요.</p>

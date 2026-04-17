@@ -163,7 +163,7 @@ const handleDownloadPDF = async () => {
     try {
       const raw = localStorage.getItem("adguard_result");
       const body = raw ? JSON.parse(raw) : {};
-      const res = await fetch(`/api/report`, {
+      const res = await fetch(`https://9ai-2nd-team-app-service-b0h3evedgec0dtda.eastus-01.azurewebsites.net/report`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

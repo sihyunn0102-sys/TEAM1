@@ -1,4 +1,4 @@
-1"""
+"""
 app/main.py  ── FastAPI 진입점
 ────────────────────────────────────────────────────────────
 AdGuard 백엔드 API 서버.
@@ -464,32 +464,11 @@ async def post_report(request: Request):
 
     try:
         from report_generator import generate_report
-        import os
-
         pdf_path = generate_report(task_id, entity)
-
-        def iter_pdf():
-            try:
-                with open(pdf_path, "rb") as f:
-                    while True:
-                        chunk = f.read(65536)
-                        if not chunk:
-                            break
-                        yield chunk
-            finally:
-                try:
-                    os.unlink(pdf_path)
-                except Exception:
-                    pass
-
-        filename = f"adguard_report_{task_id[:8]}.pdf"
-        return StreamingResponse(
-            iter_pdf(),
+        return FileResponse(
+            path=pdf_path,
             media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'attachment; filename="{filename}"',
-                "Access-Control-Expose-Headers": "Content-Disposition",
-            },
+            filename=f"adguard_report_{task_id[:8]}.pdf",
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PDF 생성 오류: {e}")

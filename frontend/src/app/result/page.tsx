@@ -161,7 +161,7 @@ export default function ResultPage() {
 
   const handleDownloadPDF = () => {
     const resultId = resultData?.resultId || "demo";
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     window.location.href = `${backendUrl}/report/${resultId}`;
   };
 

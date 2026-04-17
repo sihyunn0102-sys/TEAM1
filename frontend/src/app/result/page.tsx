@@ -107,7 +107,7 @@ export default function ResultPage() {
             explanation: backend.explanation ?? "",
             spellCheck: { original: originalChunks, corrected: correctedChunks },
             suggestions,
-            resultId: backend.result_id || "demo"
+            resultId: backend.task_id || "demo"
           });
         } catch (e) {
           setError("데이터를 불러오는 중 오류가 발생했습니다.");
@@ -121,7 +121,7 @@ export default function ResultPage() {
 
   const handleDownloadPDF = () => {
     const resultId = resultData?.resultId || "demo";
-    window.location.href = `http://localhost:8000/api/report/${resultId}`;
+    window.location.href = `http://localhost:8000/report/${resultId};
   };
 
   // 로딩 화면 UI 개선

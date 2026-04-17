@@ -207,46 +207,30 @@ export default function ResultPage() {
     });
   }
 
-  const handleDownloadPDF = async () => {
-    const backendUrl =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    try {
-      const raw = localStorage.getItem("adguard_result");
-      const body = raw ? JSON.parse(raw) : {};
-      const res = await fetch(`${backendUrl}/report`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert(`PDF 생성 실패: ${err.detail || res.status}`);
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `adguard_report_${(body.task_id || "result").slice(0, 8)}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      alert("PDF 다운로드 중 오류가 발생했습니다.");
 
 const handleDownloadPDF = async () => {
     try {
       const raw = localStorage.getItem("adguard_result");
       const body = raw ? JSON.parse(raw) : {};
       const res = await fetch(`/api/report`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       alert(`PDF 생성 실패: ${err.detail || res.status}`);
       return;
     }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `adguard_report_${(body.task_id || "result").slice(0, 8)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+      alert("PDF 다운로드 중 오류가 발생했습니다.");
   };
 
   // 로딩 화면 UI - 기존 디자인 그대로 유지

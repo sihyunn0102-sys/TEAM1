@@ -2,53 +2,48 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import {
-  AlertCircle,
-  Info,
-  ArrowLeft,
-  ShieldCheck,
-  Scale,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  HelpCircle,
-<<<<<<< HEAD
-  ThumbsUp,
-  ThumbsDown,
-} from "lucide-react";
+import { AlertCircle, Info, ArrowLeft, ShieldCheck, Scale } from "lucide-react";
 
-// --- 1. 백엔드 연동 유틸리티 ---
-=======
-} from "lucide-react";
-
-// ══════════════════════════════════════════════════════════════════
-// 백엔드 연동 유틸리티 (수정 없음)
-// ══════════════════════════════════════════════════════════════════
-
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
+// --- 백엔드 연동용 유틸리티 ---
 function toRiskLevel(verdict: string) {
   switch (verdict) {
-    case "hard_block": return "High";
-    case "caution": return "Medium";
-    case "safe": return "Low";
-    default: return "N/A";
+    case "hard_block":
+      return "High";
+    case "caution":
+      return "Medium";
+    case "safe":
+      return "Low";
+    default:
+      return "N/A";
   }
 }
 
 function buildOriginalChunks(copy: string, violations: any[]) {
-  let chunks: { text: string; isError: boolean }[] = [{ text: copy, isError: false }];
+  let chunks: { text: string; isError: boolean }[] = [
+    { text: copy, isError: false },
+  ];
   for (const v of violations) {
     const phrase: string = v.phrase;
     if (!phrase) continue;
     const next: { text: string; isError: boolean }[] = [];
     for (const chunk of chunks) {
-      if (chunk.isError) { next.push(chunk); continue; }
+      if (chunk.isError) {
+        next.push(chunk);
+        continue;
+      }
       const idx = chunk.text.indexOf(phrase);
-      if (idx === -1) { next.push(chunk); continue; }
-      if (idx > 0) next.push({ text: chunk.text.slice(0, idx), isError: false });
+      if (idx === -1) {
+        next.push(chunk);
+        continue;
+      }
+      if (idx > 0)
+        next.push({ text: chunk.text.slice(0, idx), isError: false });
       next.push({ text: phrase, isError: true });
       if (idx + phrase.length < chunk.text.length)
-        next.push({ text: chunk.text.slice(idx + phrase.length), isError: false });
+        next.push({
+          text: chunk.text.slice(idx + phrase.length),
+          isError: false,
+        });
     }
     chunks = next;
   }
@@ -62,35 +57,39 @@ const STYLE_LABELS: Record<string, string> = {
 };
 
 const analysisPhases = [
-<<<<<<< HEAD
   {
     title: "L1",
     label: "Rule Engine",
-    detail: "blacklist_v1.json 기반<br />80+ 핵심 키워드 즉시 식별",
+    desc: "금지어 즉시 식별",
+    detail: "블랙리스트 기반<br />시술/의약품 오인 용어 체크",
   },
   {
     title: "L2",
-    label: "RAG Retriever",
-    detail: "4개 인덱스 하이브리드 검색<br />관련 법령 가이드라인 Top-K=5 추출",
+    label: "Retriever",
+    desc: "법적 근거 검색",
+    detail: "화장품법 제13조 및<br />식약처 가이드라인 참조",
   },
   {
     title: "L3",
-    label: "Judge Node",
-    detail: "Azure OpenAI GPT-4o 호출<br />위반 사항 및 위험도 등급 확정",
+    label: "Judge",
+    desc: "AI 종합 판정",
+    detail: "GPT-4o 기반 위반 사항<br />및 위험도 등급 확정",
   },
   {
     title: "L4",
-    label: "Rewriter Node",
-    detail:
-      "GPT-4o 재호출 (3가지 스타일)<br />Safe · Marketing · Functional 생성",
+    label: "Rewriter",
+    desc: "수정 제안 생성",
+    detail: "안전성/마케팅 톤을 고려한<br />대안 문구 작성",
   },
   {
     title: "L5",
-    label: "Re-Judge Node",
-    detail: "수정안 L1+L3 재검토<br />안전 등급 확인 및 최대 2회 재시도",
+    label: "Re-Judge",
+    desc: "최종 검증",
+    detail: "수정안에 대한<br />2차 교차 검증 수행",
   },
 ];
 
+// SSE step 이름 → phase index 매핑
 const stepToIndex: Record<string, number> = {
   L1: 0,
   L2: 1,
@@ -98,16 +97,6 @@ const stepToIndex: Record<string, number> = {
   L4: 3,
   L5: 4,
 };
-=======
-  { title: "L1", label: "Rule Engine", detail: "blacklist_v1.json 기반<br />80+ 핵심 키워드 즉시 식별" },
-  { title: "L2", label: "RAG Retriever", detail: "4개 인덱스 하이브리드 검색<br />관련 법령 가이드라인 Top-K=5 추출" },
-  { title: "L3", label: "Judge Node", detail: "시스템 프롬프트 + RAG 컨텍스트<br />위반 사항 및 위험도 등급 확정" },
-  { title: "L4", label: "Rewriter Node", detail: "GPT-4o 기반 3가지 스타일 생성<br />(Safe · Marketing · Functional)" },
-  { title: "L5", label: "Re-Judge Node", detail: "수정안 L1+L3 재검토<br />안전 등급 확인 및 최대 2회 재시도" },
-];
-
-const stepToIndex: Record<string, number> = { L1: 0, L2: 1, L3: 2, L4: 3, L5: 4 };
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
 
 export default function ResultPage() {
   const [isLoading, setIsLoading] = useState(true);
@@ -116,16 +105,10 @@ export default function ResultPage() {
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
-<<<<<<< HEAD
-  // 🔥 [진짜 데이터 연결] 백엔드(FastAPI) SSE 스트리밍 연결
-=======
-  // ══════════════════════════════════════════════════════════════
-  // SSE 연결 (핵심 수정: 경로 수정 및 에러 로직 강화)
-  // ══════════════════════════════════════════════════════════════
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
   useEffect(() => {
     const text = sessionStorage.getItem("analyzeText");
-    const productType = sessionStorage.getItem("analyzeProductType") || "general_cosmetic";
+    const productType =
+      sessionStorage.getItem("analyzeProductType") || "general_cosmetic";
 
     if (!text) {
       try {
@@ -144,90 +127,51 @@ export default function ResultPage() {
       return;
     }
 
-<<<<<<< HEAD
-    // 서버로 보낼 데이터 묶기
-=======
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
+    // SSE 연결
     const params = new URLSearchParams({ text, product_type: productType });
-    
+
     // 수정 포인트: 로그에 찍힌 /analyze/stream이 아니라, route.ts가 위치한 /api/analyze-stream으로 호출해야 합니다.
     const es = new EventSource(`/api/analyze-stream?${params.toString()}`);
     esRef.current = es;
 
     // 백엔드에서 L1~L5 단계를 하나씩 끝낼 때마다 불 들어오게 하기
     es.addEventListener("progress", (e: any) => {
-      try {
-        const data = JSON.parse(e.data);
-        const idx = stepToIndex[data.step];
-        if (idx !== undefined) setLoadingStep(idx);
-<<<<<<< HEAD
-      } catch (err) {
-        console.error("진행 상태 파싱 오류:", err);
-      }
+      const data = JSON.parse(e.data);
+      const idx = stepToIndex[data.step];
+      if (idx !== undefined) setLoadingStep(idx);
     });
 
     // 최종 분석이 다 끝나서 데이터를 던져줄 때
     es.addEventListener("result", (e: any) => {
-      try {
-        const data = JSON.parse(e.data);
-        localStorage.setItem("adguard_result", JSON.stringify(data)); // 저장
-        sessionStorage.removeItem("analyzeText"); // 쓴 내용 비우기
-        processResult(data);
-        setIsLoading(false);
-        es.close(); // 연결 끊기
-      } catch (err) {
-        console.error("결과 파싱 오류:", err);
-      }
-    });
-
-    // 백엔드가 꺼져있거나 에러가 났을 때 처리
-    es.addEventListener("error", () => {
-      if (isLoading) {
-        setError(
-          "백엔드 서버와 연결할 수 없습니다. 파이썬 서버가 켜져 있는지 확인해주세요.",
-        );
-      }
-=======
-      } catch (err) { console.error("Progress 파싱 오류:", err); }
-    });
-
-    es.addEventListener("result", (e: any) => {
-      try {
-        const data = JSON.parse(e.data);
-        localStorage.setItem("adguard_result", JSON.stringify(data));
-        sessionStorage.removeItem("analyzeText");
-        sessionStorage.removeItem("analyzeProductType");
-        processResult(data);
-        setIsLoading(false);
-        es.close();
-      } catch (err) { console.error("Result 파싱 오류:", err); }
+      const data = JSON.parse(e.data);
+      localStorage.setItem("adguard_result", JSON.stringify(data));
+      sessionStorage.removeItem("analyzeText");
+      sessionStorage.removeItem("analyzeProductType");
+      processResult(data);
+      setIsLoading(false);
+      es.close();
     });
 
     es.addEventListener("error", (e: any) => {
-      // 404 에러 발생 시 더 구체적인 안내를 위해 수정
-      setError("서버 연결에 실패했습니다 (404). API 경로 설정 혹은 배포 상태를 확인해주세요.");
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
+      try {
+        const data = JSON.parse(e.data);
+        setError(data.message || "분석 중 오류가 발생했습니다.");
+      } catch {
+        setError("서버 연결에 실패했습니다.");
+      }
       setIsLoading(false);
       es.close();
     });
 
-<<<<<<< HEAD
-    return () => {
-      if (esRef.current) esRef.current.close();
-    };
-=======
-    // 기본 브라우저 에러 핸들러
     es.onerror = () => {
-      if (es.readyState === EventSource.CLOSED) {
-        // 정상 종료가 아닌 경우에만 에러 표시
-        if (isLoading) setError("분석 서버와의 연결이 끊어졌습니다.");
-      }
+      setError("서버 연결이 끊어졌습니다. 다시 시도해주세요.");
       setIsLoading(false);
       es.close();
     };
 
-    return () => { es.close(); };
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
+    return () => {
+      es.close();
+    };
   }, []);
 
   function processResult(backend: any) {
@@ -235,113 +179,61 @@ export default function ResultPage() {
     const violations: any[] = backend.violations ?? [];
     const rewrites: any[] = backend.verified_rewrites ?? [];
     const originalChunks = buildOriginalChunks(copy, violations);
-<<<<<<< HEAD
-    const safeRewrite =
-      rewrites.find((r: any) => r.style === "safe") ?? rewrites[0];
-=======
     const safeRewrite = rewrites.find((r) => r.style === "safe") ?? rewrites[0];
+    const correctedChunks = safeRewrite
+      ? [{ text: safeRewrite.text, isFix: true }]
+      : [{ text: "수정안 없음", isFix: false }];
+
     const suggestions = rewrites.map((r, i) => ({
       id: i + 1,
       text: r.text,
       tag: STYLE_LABELS[r.style] ?? r.style,
-      style: r.style,
     }));
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
 
     setResultData({
       riskLevel: toRiskLevel(backend.final_verdict),
       explanation: backend.explanation ?? "",
-<<<<<<< HEAD
-      spellCheck: {
-        original: originalChunks,
-        corrected: safeRewrite
-          ? [{ text: safeRewrite.text, isFix: true }]
-          : [{ text: "수정안 없음", isFix: false }],
-      },
-      suggestions: rewrites.map((r: any, i: number) => ({
-        id: i + 1,
-        text: r.text,
-        tag: STYLE_LABELS[r.style] ?? r.style,
-        style: r.style,
-      })),
-=======
-      spellCheck: { 
-        original: originalChunks, 
-        corrected: safeRewrite ? [{ text: safeRewrite.text, isFix: true }] : [{ text: "수정안 없음", isFix: false }] 
-      },
+      spellCheck: { original: originalChunks, corrected: correctedChunks },
       suggestions,
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
       resultId: backend.task_id || backend.result_id || "demo",
     });
   }
 
-  const handleSuggestionClick = (selectedText: string) => {
-    setResultData((prev: any) => ({
-      ...prev,
-<<<<<<< HEAD
-      spellCheck: {
-        ...prev.spellCheck,
-        corrected: [{ text: selectedText, isFix: true }],
-      },
-=======
-      spellCheck: { ...prev.spellCheck, corrected: [{ text: selectedText, isFix: true }] },
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
-    }));
-  };
-
-  const handleFeedback = async (style: string, rating: 1 | -1) => {
-    try {
-      await fetch("/api/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-<<<<<<< HEAD
-        body: JSON.stringify({
-          task_id: resultData?.resultId,
-          selected_style: style,
-          rating,
-        }),
-      });
-      alert("피드백이 전송되었습니다! 감사합니다.");
-    } catch (e) {
-      console.error("피드백 전송 실패:", e);
-    }
-=======
-        body: JSON.stringify({ task_id: resultData?.resultId, selected_style: style, rating }),
-      });
-    } catch (e) { console.error("피드백 전송 실패:", e); }
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
-  };
-
   const handleDownloadPDF = async () => {
+    // 1. 아까 성공했던 백엔드 주소 (8080번 포트)
+    const backendUrl = "http://127.0.0.1:8080";
+
     try {
       const raw = localStorage.getItem("adguard_result");
       const body = raw ? JSON.parse(raw) : {};
-      const res = await fetch(`/api/report`, {
+
+      const res = await fetch(`${backendUrl}/report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error();
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`PDF 생성 실패: ${err.detail || res.status}`);
+        return;
+      }
+
+      // 2. 여기서부터가 진짜 다운로드 실행 코드!
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `adguard_report.pdf`;
+      a.download = `adguard_report_${(body.task_id || "result").slice(0, 8)}.pdf`;
       a.click();
-<<<<<<< HEAD
+      URL.revokeObjectURL(url);
     } catch (e) {
+      // 3. 에러 처리 괄호도 완벽하게 닫아줍니다!
       alert("PDF 다운로드 중 오류가 발생했습니다.");
     }
   };
 
-=======
-    } catch (e) { alert("PDF 다운로드 중 오류가 발생했습니다."); }
-  };
-
-  // ══════════════════════════════════════════════════════════════
-  // UI 렌더링 (기존 디자인 100% 유지)
-  // ══════════════════════════════════════════════════════════════
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
+  // 로딩 화면 UI - 기존 디자인 그대로 유지
   if (isLoading) {
     return (
       <div className="flex flex-col items-center min-h-screen bg-white font-sans overflow-hidden pt-20 pb-10">
@@ -349,18 +241,21 @@ export default function ResultPage() {
           <div className="absolute w-full h-full bg-blue-400/15 blur-[80px] animate-pulse"></div>
           <div className="relative w-44 h-44 bg-gradient-to-tr from-blue-700 via-cyan-500 to-indigo-600 rounded-full animate-sphere-morph shadow-[inset_0_0_30px_rgba(255,255,255,0.3)]"></div>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-[10px] font-black tracking-[0.4em] text-white/90 uppercase mb-2">Processing</span>
-            <div className="flex gap-1.5 items-center"><span className="text-xl font-black text-white">분석 중...</span></div>
+            <span className="text-[10px] font-black tracking-[0.4em] text-white/90 uppercase mb-2">
+              Processing
+            </span>
+            <div className="flex gap-1.5 items-center">
+              <span className="text-xl font-black text-white">분석 중...</span>
+            </div>
           </div>
         </div>
         <div className="w-full max-w-6xl px-10">
           <div className="text-center mb-12">
-<<<<<<< HEAD
             <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
               AI 광고 컴플라이언스 엔진 가동 중
             </h2>
             <p className="text-gray-500 mt-2 text-sm">
-              현재 단계: {analysisPhases[loadingStep].title} ·{" "}
+              현재 단계: {analysisPhases[loadingStep].title} -{" "}
               {analysisPhases[loadingStep].label}
             </p>
           </div>
@@ -368,10 +263,20 @@ export default function ResultPage() {
             {analysisPhases.map((phase, index) => (
               <div
                 key={index}
-                className={`flex-1 transition-all duration-700 p-6 rounded-[32px] border flex flex-col items-center text-center ${loadingStep === index ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white" : loadingStep > index ? "bg-blue-50 border-blue-100 opacity-60" : "bg-gray-50 border-gray-100 opacity-30"}`}
+                className={`flex-1 transition-all duration-700 p-6 rounded-[32px] border flex flex-col items-center text-center ${
+                  loadingStep === index
+                    ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white"
+                    : loadingStep > index
+                      ? "bg-blue-50 border-blue-100 opacity-60"
+                      : "bg-gray-50 border-gray-100 opacity-30"
+                }`}
               >
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black mb-4 ${loadingStep === index ? "bg-white text-blue-600" : "bg-blue-100 text-blue-600"}`}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black mb-4 ${
+                    loadingStep === index
+                      ? "bg-white text-blue-600"
+                      : "bg-blue-100 text-blue-600"
+                  }`}
                 >
                   {loadingStep > index ? "✓" : index + 1}
                 </div>
@@ -384,30 +289,24 @@ export default function ResultPage() {
                     dangerouslySetInnerHTML={{ __html: phase.detail }}
                   />
                 )}
-=======
-            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">AI 광고 컴플라이언스 엔진 가동 중</h2>
-            <p className="text-gray-500 mt-2 text-sm">현재 단계: {analysisPhases[loadingStep].title} · {analysisPhases[loadingStep].label}</p>
-          </div>
-          <div className="flex flex-row justify-center items-stretch gap-4">
-            {analysisPhases.map((phase, index) => (
-              <div key={index} className={`flex-1 transition-all duration-700 p-6 rounded-[32px] border flex flex-col items-center text-center ${loadingStep === index ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white" : loadingStep > index ? "bg-blue-50 border-blue-100 opacity-60" : "bg-gray-50 border-gray-100 opacity-30"}`}>
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black mb-4 ${loadingStep === index ? "bg-white text-blue-600" : "bg-blue-100 text-blue-600"}`}>{loadingStep > index ? "✓" : index + 1}</div>
-                <h4 className="font-bold text-xs mb-1">{phase.title} · {phase.label}</h4>
-                {loadingStep === index && <p className="text-[10px] mt-2 bg-white/10 p-2 rounded-xl animate-fade-in" dangerouslySetInnerHTML={{ __html: phase.detail }} />}
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
               </div>
             ))}
           </div>
         </div>
-<<<<<<< HEAD
         <style
           dangerouslySetInnerHTML={{
-            __html: `@keyframes sphereMorph { 0% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(0deg) scale(1); } 50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; transform: rotate(180deg) scale(1.1); } 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(360deg) scale(1); } } .animate-sphere-morph { animation: sphereMorph 8s ease-in-out infinite; } .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; } @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }`,
+            __html: `
+          @keyframes sphereMorph {
+            0% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(0deg) scale(1); }
+            50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; transform: rotate(180deg) scale(1.1); }
+            100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(360deg) scale(1); }
+          }
+          .animate-sphere-morph { animation: sphereMorph 8s ease-in-out infinite; }
+          .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+          @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        `,
           }}
         />
-=======
-        <style dangerouslySetInnerHTML={{ __html: `@keyframes sphereMorph { 0% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(0deg) scale(1); } 50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; transform: rotate(180deg) scale(1.1); } 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(360deg) scale(1); } } .animate-sphere-morph { animation: sphereMorph 8s ease-in-out infinite; } .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; } @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }` }} />
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
       </div>
     );
   }
@@ -417,16 +316,12 @@ export default function ResultPage() {
       <div className="flex flex-col items-center justify-center min-h-screen bg-zinc-50 px-6 text-center">
         <AlertCircle size={48} className="text-red-500 mb-4" />
         <p className="text-red-500 font-semibold mb-6">{error}</p>
-<<<<<<< HEAD
         <Link
           href="/upload"
           className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold"
         >
-          새로운 분석하러 가기
+          광고 분석하러 가기
         </Link>
-=======
-        <Link href="/upload" className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold">광고 분석하러 가기</Link>
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
       </div>
     );
   }
@@ -434,73 +329,67 @@ export default function ResultPage() {
   if (!resultData) return null; // 에러 방지
 
   const riskBadgeMap: any = {
-<<<<<<< HEAD
     High: {
       bg: "bg-red-50",
-      text: "text-red-700",
-      border: "border-red-200",
-      icon: <XCircle size={18} className="text-red-600" />,
+      text: "text-red-600",
+      border: "border-red-100",
+      dot: "bg-red-600",
       label: "위험 단계",
     },
     Medium: {
       bg: "bg-yellow-50",
-      text: "text-yellow-700",
-      border: "border-yellow-200",
-      icon: <AlertTriangle size={18} className="text-yellow-600" />,
+      text: "text-yellow-600",
+      border: "border-yellow-100",
+      dot: "bg-yellow-500",
       label: "주의 단계",
     },
     Low: {
       bg: "bg-green-50",
-      text: "text-green-700",
-      border: "border-green-200",
-      icon: <CheckCircle2 size={18} className="text-green-600" />,
+      text: "text-green-600",
+      border: "border-green-100",
+      dot: "bg-green-500",
       label: "안전 단계",
     },
+    "N/A": {
+      bg: "bg-gray-50",
+      text: "text-gray-500",
+      border: "border-gray-100",
+      dot: "bg-gray-400",
+      label: "분석 불가",
+    },
   };
-  const riskBadge = riskBadgeMap[resultData.riskLevel] || {
-    bg: "bg-gray-50",
-    text: "text-gray-500",
-    border: "border-gray-200",
-    icon: <HelpCircle size={18} />,
-    label: "분석 불가",
-  };
-=======
-    High: { bg: "bg-red-50", text: "text-red-700", border: "border-red-200", icon: <XCircle size={18} className="text-red-600" />, label: "위험 단계" },
-    Medium: { bg: "bg-yellow-50", text: "text-yellow-700", border: "border-yellow-200", icon: <AlertTriangle size={18} className="text-yellow-600" />, label: "주의 단계" },
-    Low: { bg: "bg-green-50", text: "text-green-700", border: "border-green-200", icon: <CheckCircle2 size={18} className="text-green-600" />, label: "안전 단계" },
-  };
-  const riskBadge = riskBadgeMap[resultData.riskLevel] || { bg: "bg-gray-50", text: "text-gray-500", border: "border-gray-200", icon: <HelpCircle size={18} />, label: "분석 불가" };
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
+  const riskBadge = riskBadgeMap[resultData.riskLevel] || riskBadgeMap["N/A"];
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-6">
       <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-sm border border-gray-100 p-8 md:p-14 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full bg-gray-900 text-gray-400 py-2.5 px-6 text-[11px] flex justify-between items-center z-10">
-          <span className="flex items-center gap-1.5 font-medium"><ShieldCheck size={14} className="text-blue-400" /> 본 분석은 Azure AI를 기반으로 하며 법적 효력이 없습니다.</span>
-          <span className="hidden md:inline opacity-60">ADGUARD COMPLIANCE v1.2</span>
+          <span className="flex items-center gap-1.5 font-medium">
+            <ShieldCheck size={14} className="text-blue-400" /> 본 분석은 Azure
+            AI를 기반으로 하며 법적 효력이 없습니다.
+          </span>
+          <span className="hidden md:inline opacity-60">
+            ADGUARD COMPLIANCE v1.2
+          </span>
         </div>
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-10 mt-6 gap-4">
           <div>
-<<<<<<< HEAD
             <span className="text-blue-600 font-bold text-xs tracking-widest uppercase mb-2 block">
               Analysis Report
             </span>
-            <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight text-left">
+            <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">
               분석 결과 리포트
             </h1>
           </div>
           <div
-            className={`${riskBadge.bg} ${riskBadge.text} ${riskBadge.border} px-5 py-2.5 rounded-full font-bold text-sm border flex items-center gap-2.5 shadow-sm`}
+            className={`${riskBadge.bg} ${riskBadge.text} px-5 py-2 rounded-full font-bold text-sm border ${riskBadge.border} flex items-center gap-2`}
           >
-            {riskBadge.icon}
+            <span
+              className={`w-2 h-2 ${riskBadge.dot} rounded-full animate-pulse`}
+            ></span>
             {riskBadge.label}
-=======
-            <span className="text-blue-600 font-bold text-xs tracking-widest uppercase mb-2 block">Analysis Report</span>
-            <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight text-left">분석 결과 리포트</h1>
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
           </div>
-          <div className={`${riskBadge.bg} ${riskBadge.text} ${riskBadge.border} px-5 py-2.5 rounded-full font-bold text-sm border flex items-center gap-2.5 shadow-sm`}>{riskBadge.icon}{riskBadge.label}</div>
         </div>
 
         {resultData.explanation && (
@@ -512,120 +401,84 @@ export default function ResultPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
           <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 relative">
-<<<<<<< HEAD
-            <div className="absolute top-6 right-8 text-[10px] font-black text-red-300 uppercase tracking-widest">
+            <div className="absolute top-6 right-8 text-[10px] font-black text-red-300 tracking-widest uppercase">
               Before
             </div>
-            <h4 className="text-zinc-400 font-bold text-sm mb-6 text-left">
+            <h4 className="text-zinc-400 font-bold text-sm mb-6">
               수정 전 위반 문구
             </h4>
-            <div className="h-48 overflow-y-auto text-lg text-zinc-600 text-left leading-relaxed">
+            <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-600 pr-2">
               {resultData.spellCheck.original.map((chunk: any, i: number) => (
                 <span
                   key={i}
                   className={
                     chunk.isError
-                      ? "bg-red-100 text-red-700 line-through mx-0.5"
+                      ? "bg-red-100 text-red-700 px-1 rounded-md line-through decoration-red-300 decoration-2 mx-0.5"
                       : ""
                   }
                 >
                   {chunk.text}
                 </span>
-=======
-            <div className="absolute top-6 right-8 text-[10px] font-black text-red-300 uppercase tracking-widest">Before</div>
-            <h4 className="text-zinc-400 font-bold text-sm mb-6 text-left">수정 전 위반 문구</h4>
-            <div className="h-48 overflow-y-auto text-lg text-zinc-600 text-left leading-relaxed">
-              {resultData.spellCheck.original.map((chunk: any, i: number) => (
-                <span key={i} className={chunk.isError ? "bg-red-100 text-red-700 line-through mx-0.5" : ""}>{chunk.text}</span>
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
               ))}
             </div>
           </div>
           <div className="bg-blue-50/30 rounded-[32px] p-8 border border-blue-100/50 relative">
-<<<<<<< HEAD
-            <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 uppercase tracking-widest">
+            <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 tracking-widest uppercase">
               After
             </div>
-            <h4 className="text-blue-600 font-bold text-sm mb-6 text-left">
+            <h4 className="text-blue-600 font-bold text-sm mb-6">
               AI 정화 완료
             </h4>
-=======
-            <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 uppercase tracking-widest">After</div>
-            <h4 className="text-blue-600 font-bold text-sm mb-6 text-left">AI 정화 완료</h4>
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
-            <div className="h-48 overflow-y-auto text-lg text-zinc-800 text-left leading-relaxed">
+            <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-800 pr-2">
               {resultData.spellCheck.corrected.map((chunk: any, i: number) => (
-                <span key={i} className={chunk.isFix ? "bg-blue-600 text-white px-1.5 py-0.5 rounded-md font-bold mx-0.5 shadow-sm" : ""}>{chunk.text}</span>
+                <span
+                  key={i}
+                  className={
+                    chunk.isFix
+                      ? "bg-blue-600 text-white px-1.5 py-0.5 rounded-md font-bold mx-0.5 shadow-sm"
+                      : ""
+                  }
+                >
+                  {chunk.text}
+                </span>
               ))}
             </div>
           </div>
         </div>
 
         <div className="mb-12 w-full overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 flex flex-col items-center justify-center p-6 cursor-pointer hover:shadow-md transition-all group">
-          <span className="text-[10px] text-gray-400 font-bold bg-gray-200 px-2 py-0.5 rounded-sm mb-2 self-start">AD</span>
-          <p className="text-gray-700 font-bold text-sm md:text-base group-hover:text-blue-600 transition-colors">더 많은 광고 문구를 무제한으로 분석하고 싶다면? 🚀</p>
-          <p className="text-xs text-gray-500 mt-1">'광고청정기 프로' 1개월 무료 체험 알아보기 &rarr;</p>
+          <span className="text-[10px] text-gray-400 font-bold bg-gray-200 px-2 py-0.5 rounded-sm mb-2 self-start">
+            AD
+          </span>
+          <p className="text-gray-700 font-bold text-sm md:text-base group-hover:text-blue-600 transition-colors">
+            더 많은 광고 문구를 무제한으로 분석하고 싶다면? 🚀
+          </p>
+          <p className="text-xs text-gray-500 mt-1">
+            '광고청정기 프로' 1개월 무료 체험 알아보기 &rarr;
+          </p>
         </div>
 
         {resultData.suggestions.length > 0 && (
           <div className="mb-12 text-left">
-<<<<<<< HEAD
             <h3 className="font-bold text-zinc-800 flex items-center gap-2 mb-6">
               ✨ 다른 AI 교정 제안 둘러보기{" "}
               <span className="text-sm font-normal text-zinc-400">
-                (클릭하여 위 칸에 적용)
+                (클릭하여 복사)
               </span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {resultData.suggestions.map((item: any, index: number) => (
                 <div
                   key={item.id}
-                  onClick={() => handleSuggestionClick(item.text)}
-                  className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-400 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between h-full active:scale-95"
+                  onClick={() => navigator.clipboard.writeText(item.text)}
+                  className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-200 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between h-full"
                 >
-                  <div>
-                    <span className="text-xs font-black text-blue-600 bg-blue-50 border border-blue-100 rounded-md px-3 py-1 inline-block w-fit">
-                      {item.tag || `추천 문구 ${index + 1}`}
-                    </span>
-                    <p className="mt-4 text-zinc-700 font-medium leading-relaxed">
-                      {item.text}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-end gap-2 border-t border-gray-50 pt-4 mt-4">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFeedback(item.style, 1);
-                      }}
-                      className="p-1.5 rounded-full text-gray-300 hover:bg-gray-100 hover:text-blue-500 transition-colors"
-                      aria-label="좋아요"
-                    >
-                      <ThumbsUp size={14} />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFeedback(item.style, -1);
-                      }}
-                      className="p-1.5 rounded-full text-gray-300 hover:bg-gray-100 hover:text-red-500 transition-colors"
-                      aria-label="별로예요"
-                    >
-                      <ThumbsDown size={14} />
-                    </button>
-=======
-            <h3 className="font-bold text-zinc-800 flex items-center gap-2 mb-6">✨ 다른 AI 교정 제안 둘러보기 <span className="text-sm font-normal text-zinc-400">(클릭하여 위 칸에 적용)</span></h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {resultData.suggestions.map((item: any, index: number) => (
-                <div key={item.id} onClick={() => handleSuggestionClick(item.text)} className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-400 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between h-full active:scale-95">
-                  <div>
-                    <span className="text-xs font-black text-blue-600 bg-blue-50 border border-blue-100 rounded-md px-3 py-1 inline-block w-fit">{item.tag || `추천 문구 ${index + 1}`}</span>
-                    <p className="mt-4 text-zinc-700 font-medium leading-relaxed">{item.text}</p>
-                  </div>
-                  <div className="flex items-center justify-end gap-2 border-t border-gray-50 pt-4 mt-4">
-                    <button onClick={(e) => { e.stopPropagation(); handleFeedback(item.style, 1); }} className="p-1.5 rounded-full text-gray-300 hover:bg-gray-100 hover:text-blue-500 transition-colors" aria-label="좋아요"><ThumbsUp size={14} /></button>
-                    <button onClick={(e) => { e.stopPropagation(); handleFeedback(item.style, -1); }} className="p-1.5 rounded-full text-gray-300 hover:bg-gray-100 hover:text-red-500 transition-colors" aria-label="별로예요"><ThumbsDown size={14} /></button>
->>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
-                  </div>
+                  <span className="text-xs font-black tracking-widest text-blue-600 bg-blue-50 border border-blue-100 rounded-md px-3 py-1 inline-block w-fit">
+                    추천 문구 {index + 1}
+                  </span>
+                  <p className="mt-4 text-zinc-700 font-medium leading-relaxed">
+                    {item.text}
+                  </p>
                 </div>
               ))}
             </div>
@@ -634,11 +487,25 @@ export default function ResultPage() {
 
         <footer className="space-y-8">
           <div className="flex items-start gap-2 text-gray-400 max-w-2xl mx-auto text-center justify-center">
-            <Info size={14} className="mt-0.5 shrink-0" /><p className="text-[11px] leading-relaxed">본 서비스는 텍스트 데이터만을 분석하며, 최종 광고 시안 확정 전 반드시 법률 전문가의 검토를 거치시기 바랍니다.</p>
+            <Info size={14} className="mt-0.5 shrink-0" />
+            <p className="text-[11px] leading-relaxed">
+              본 서비스는 텍스트 데이터만을 분석하며, 최종 광고 시안 확정 전
+              반드시 법률 전문가의 검토를 거치시기 바랍니다.
+            </p>
           </div>
           <div className="flex flex-col md:flex-row gap-4">
-            <Link href="/upload" className="flex-1 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-bold hover:bg-blue-700 shadow-lg gap-2 transition-all active:scale-95"><ArrowLeft size={18} /> 새 이미지 검사</Link>
-            <button onClick={handleDownloadPDF} className="px-10 h-14 border border-gray-200 text-gray-600 rounded-2xl flex items-center justify-center font-bold hover:bg-gray-50 transition-all gap-2"><Scale size={18} /> 결과 보고서 저장 (PDF)</button>
+            <Link
+              href="/upload"
+              className="flex-1 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-bold hover:bg-blue-700 shadow-lg gap-2 transition-all active:scale-95"
+            >
+              <ArrowLeft size={18} /> 새 이미지 검사
+            </Link>
+            <button
+              onClick={handleDownloadPDF}
+              className="px-10 h-14 border border-gray-200 text-gray-600 rounded-2xl flex items-center justify-center font-bold hover:bg-gray-50 transition-all gap-2"
+            >
+              <Scale size={18} /> 결과 보고서 저장 (PDF)
+            </button>
           </div>
         </footer>
       </main>

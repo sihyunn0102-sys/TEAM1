@@ -188,44 +188,55 @@ export default function UploadPage() {
       return;
     }
 
-    setLoading(true);
+    const category = categories.find((c) => c.id === selectedCategory);
+    const productType = category?.productType ?? "general_cosmetic";
 
-    try {
-      // 파일 + 텍스트 동시 입력: OCR 텍스트와 직접 입력 텍스트를 합산
-      let finalContent = text.trim();
-
-      if (file) {
+    // ── [분기 1] 파일이 있는데 아직 OCR을 실행하지 않은 경우 ──
+    // OCR만 먼저 실행하고 결과 미리보기를 보여준 뒤 여기서 멈춘다.
+    // 사용자가 OCR 결과를 확인하고 버튼을 다시 눌러야 실제 분석으로 넘어감.
+    if (file && !ocrPreview) {
+      setLoading(true);
+      try {
         const ocrText = await analyzeOCR(file);
         setOcrPreview(ocrText);
-        // 텍스트가 있으면 줄바꿈으로 이어붙임, 없으면 OCR만 사용
-        finalContent = finalContent
-          ? `${finalContent}\n\n[이미지/파일 추출 텍스트]\n${ocrText}`
-          : ocrText;
+      } catch (error) {
+        console.error(error);
+        alert("OCR 분석 중 오류가 발생했습니다. 다시 시도해주세요.");
+      } finally {
+        setLoading(false);
+        setLoadingStatus("");
       }
+      return;
+    }
 
-      setLoadingStatus("표시광고법 위반 여부를 분석 중입니다...");
+    // ── [분기 2] 실제 분석 단계로 진입 ──
+    // - 파일 있음 + OCR 완료: OCR 텍스트만 전송
+    // - 파일 없음: 사용자가 입력한 텍스트 전송
+    let finalContent = "";
+    if (file && ocrPreview) {
+      finalContent = ocrPreview;
+    } else {
+      finalContent = text.trim();
+    }
 
-      const category = categories.find((c) => c.id === selectedCategory);
-      const productType = category?.productType ?? "general_cosmetic";
+    if (!finalContent) {
+      alert("분석할 내용이 없습니다.");
+      return;
+    }
 
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: finalContent, product_type: productType }),
-      });
+    setLoading(true);
+    setLoadingStatus("분석 페이지로 이동 중...");
+    try {
+      // 분석은 result 페이지에서 SSE로 진행 (L1~L5 단계별 로딩 화면 표시)
+      // 이전 결과가 남아있으면 제거하여 stale 결과 방지
+      localStorage.removeItem("adguard_result");
+      sessionStorage.setItem("analyzeText", finalContent);
+      sessionStorage.setItem("analyzeProductType", productType);
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "분석 요청 실패");
-      }
-
-      localStorage.setItem("adguard_result", JSON.stringify(data));
       router.push("/result");
-    } catch (error: any) {
-      console.error("상세 에러 내역:", error); // 터미널/콘솔에서 에러 로그 확인
-      alert(`분석 중 오류가 발생했습니다: ${error?.message || "알 수 없는 오류"}`);
-    } finally {
+    } catch (error) {
+      console.error(error);
+      alert("분석 준비 중 오류가 발생했습니다. 다시 시도해주세요.");
       setLoading(false);
       setLoadingStatus("");
     }
@@ -556,6 +567,10 @@ export default function UploadPage() {
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       {loadingStatus}
                     </>
+                  ) : file && !ocrPreview ? (
+                    "OCR 분석 시작 →"
+                  ) : file && ocrPreview ? (
+                    "이 텍스트로 광고 분석 시작 →"
                   ) : (
                     "광고 분석 시작 →"
                   )}

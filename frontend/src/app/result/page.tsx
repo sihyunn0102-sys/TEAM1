@@ -12,9 +12,11 @@ import {
   AlertTriangle,
   XCircle,
   HelpCircle,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 
-// --- 1. 백엔드 연동용 유틸리티 ---
+// --- 1. 백엔드 연동 유틸리티 ---
 function toRiskLevel(verdict: string) {
   switch (verdict) {
     case "hard_block":
@@ -66,7 +68,6 @@ const STYLE_LABELS: Record<string, string> = {
   functional: "마케팅 강조 🔵",
 };
 
-// --- 2. 상세 분석 단계 데이터 ---
 const analysisPhases = [
   {
     title: "L1",
@@ -81,13 +82,13 @@ const analysisPhases = [
   {
     title: "L3",
     label: "Judge Node",
-    detail: "시스템 프롬프트 + RAG 컨텍스트<br />위반 사항 및 위험도 등급 확정",
+    detail: "Azure OpenAI GPT-4o 호출<br />위반 사항 및 위험도 등급 확정",
   },
   {
     title: "L4",
     label: "Rewriter Node",
     detail:
-      "GPT-4o 기반 3가지 스타일 생성<br />(Safe · Marketing · Functional)",
+      "GPT-4o 재호출 (3가지 스타일)<br />Safe · Marketing · Functional 생성",
   },
   {
     title: "L5",
@@ -96,71 +97,95 @@ const analysisPhases = [
   },
 ];
 
+const stepToIndex: Record<string, number> = {
+  L1: 0,
+  L2: 1,
+  L3: 2,
+  L4: 3,
+  L5: 4,
+};
+
 export default function ResultPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadingStep, setLoadingStep] = useState(0);
   const [resultData, setResultData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const esRef = useRef<EventSource | null>(null);
 
+  // 🔥 [진짜 데이터 연결] 백엔드(FastAPI) SSE 스트리밍 연결
   useEffect(() => {
-    // 1. 이전 페이지(업로드)에서 저장한 분석할 텍스트와 제품 타입 가져오기
     const text = sessionStorage.getItem("analyzeText");
     const productType =
       sessionStorage.getItem("analyzeProductType") || "general_cosmetic";
 
     if (!text) {
-      // 분석할 텍스트가 없으면 기존 결과가 있는지 확인
-      const raw = localStorage.getItem("adguard_result");
-      if (raw) {
+      try {
+        const raw = localStorage.getItem("adguard_result");
+        if (!raw) {
+          setError("분석할 내용이 없습니다. 먼저 광고 분석을 진행해주세요.");
+          setIsLoading(false);
+          return;
+        }
         processResult(JSON.parse(raw));
         setIsLoading(false);
-      } else {
-        alert("분석할 데이터가 없습니다. 업로드 페이지로 이동합니다.");
-        window.location.href = "/upload";
+      } catch {
+        setError("이전 데이터를 불러오는 중 오류가 발생했습니다.");
+        setIsLoading(false);
       }
       return;
     }
 
-    // 2. 백엔드 스트리밍 API 연결
+    // 서버로 보낼 데이터 묶기
     const params = new URLSearchParams({ text, product_type: productType });
     const es = new EventSource(`/api/analyze-stream?${params.toString()}`);
+    esRef.current = es;
 
-    // 3. 서버에서 진행 상황(L1~L5) 신호를 보낼 때마다 로딩 단계 업데이트
+    // 백엔드에서 L1~L5 단계를 하나씩 끝낼 때마다 불 들어오게 하기
     es.addEventListener("progress", (e: any) => {
-      const data = JSON.parse(e.data);
-      // 서버에서 보내는 step 이름(L1, L2...)을 인덱스(0, 1...)로 변환
-      const stepMap: Record<string, number> = {
-        L1: 0,
-        L2: 1,
-        L3: 2,
-        L4: 3,
-        L5: 4,
-      };
-      if (stepMap[data.step] !== undefined) {
-        setLoadingStep(stepMap[data.step]);
+      try {
+        const data = JSON.parse(e.data);
+        const idx = stepToIndex[data.step];
+        if (idx !== undefined) setLoadingStep(idx);
+      } catch (err) {
+        console.error("진행 상태 파싱 오류:", err);
       }
     });
 
-    // 4. 최종 결과가 도착했을 때
+    // 최종 분석이 다 끝나서 데이터를 던져줄 때
     es.addEventListener("result", (e: any) => {
-      const data = JSON.parse(e.data);
-      localStorage.setItem("adguard_result", JSON.stringify(data)); // 결과 저장
-      processResult(data); // 화면에 데이터 뿌리기
-      setIsLoading(false); // 로딩 종료
-      es.close(); // 연결 닫기
+      try {
+        const data = JSON.parse(e.data);
+        localStorage.setItem("adguard_result", JSON.stringify(data)); // 저장
+        sessionStorage.removeItem("analyzeText"); // 쓴 내용 비우기
+        processResult(data);
+        setIsLoading(false);
+        es.close(); // 연결 끊기
+      } catch (err) {
+        console.error("결과 파싱 오류:", err);
+      }
     });
 
-    // 5. 에러 발생 시
-    es.onerror = () => {
-      console.error("연결 에러 발생");
+    // 백엔드가 꺼져있거나 에러가 났을 때 처리
+    es.addEventListener("error", () => {
+      if (isLoading) {
+        setError(
+          "백엔드 서버와 연결할 수 없습니다. 파이썬 서버가 켜져 있는지 확인해주세요.",
+        );
+      }
+      setIsLoading(false);
       es.close();
-    };
+    });
 
-    return () => es.close();
+    return () => {
+      if (esRef.current) esRef.current.close();
+    };
   }, []);
 
   function processResult(backend: any) {
-    const copy = backend.copy ?? backend.ad_copy ?? "";
-    const rewrites = backend.verified_rewrites ?? [];
+    const copy: string = backend.copy ?? backend.ad_copy ?? "";
+    const violations: any[] = backend.violations ?? [];
+    const rewrites: any[] = backend.verified_rewrites ?? [];
+    const originalChunks = buildOriginalChunks(copy, violations);
     const safeRewrite =
       rewrites.find((r: any) => r.style === "safe") ?? rewrites[0];
 
@@ -168,7 +193,7 @@ export default function ResultPage() {
       riskLevel: toRiskLevel(backend.final_verdict),
       explanation: backend.explanation ?? "",
       spellCheck: {
-        original: buildOriginalChunks(copy, backend.violations ?? []),
+        original: originalChunks,
         corrected: safeRewrite
           ? [{ text: safeRewrite.text, isFix: true }]
           : [{ text: "수정안 없음", isFix: false }],
@@ -177,11 +202,12 @@ export default function ResultPage() {
         id: i + 1,
         text: r.text,
         tag: STYLE_LABELS[r.style] ?? r.style,
+        style: r.style,
       })),
+      resultId: backend.task_id || backend.result_id || "demo",
     });
   }
 
-  // ✅ [기능] 추천 문구 클릭 시 After 칸에 입력
   const handleSuggestionClick = (selectedText: string) => {
     setResultData((prev: any) => ({
       ...prev,
@@ -190,6 +216,44 @@ export default function ResultPage() {
         corrected: [{ text: selectedText, isFix: true }],
       },
     }));
+  };
+
+  const handleFeedback = async (style: string, rating: 1 | -1) => {
+    try {
+      await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          task_id: resultData?.resultId,
+          selected_style: style,
+          rating,
+        }),
+      });
+      alert("피드백이 전송되었습니다! 감사합니다.");
+    } catch (e) {
+      console.error("피드백 전송 실패:", e);
+    }
+  };
+
+  const handleDownloadPDF = async () => {
+    try {
+      const raw = localStorage.getItem("adguard_result");
+      const body = raw ? JSON.parse(raw) : {};
+      const res = await fetch(`/api/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `adguard_report.pdf`;
+      a.click();
+    } catch (e) {
+      alert("PDF 다운로드 중 오류가 발생했습니다.");
+    }
   };
 
   if (isLoading) {
@@ -207,16 +271,21 @@ export default function ResultPage() {
             </div>
           </div>
         </div>
-
-        <div className="w-full max-w-6xl px-10 text-center">
-          <h2 className="text-2xl font-bold text-gray-900 tracking-tight mb-12">
-            AI 광고 컴플라이언스 엔진 가동 중
-          </h2>
+        <div className="w-full max-w-6xl px-10">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
+              AI 광고 컴플라이언스 엔진 가동 중
+            </h2>
+            <p className="text-gray-500 mt-2 text-sm">
+              현재 단계: {analysisPhases[loadingStep].title} ·{" "}
+              {analysisPhases[loadingStep].label}
+            </p>
+          </div>
           <div className="flex flex-row justify-center items-stretch gap-4">
             {analysisPhases.map((phase, index) => (
               <div
                 key={index}
-                className={`flex-1 transition-all duration-700 p-6 rounded-[32px] border flex flex-col items-center ${loadingStep === index ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white" : loadingStep > index ? "bg-blue-50 border-blue-100 opacity-60" : "bg-gray-50 border-gray-100 opacity-30"}`}
+                className={`flex-1 transition-all duration-700 p-6 rounded-[32px] border flex flex-col items-center text-center ${loadingStep === index ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white" : loadingStep > index ? "bg-blue-50 border-blue-100 opacity-60" : "bg-gray-50 border-gray-100 opacity-30"}`}
               >
                 <div
                   className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black mb-4 ${loadingStep === index ? "bg-white text-blue-600" : "bg-blue-100 text-blue-600"}`}
@@ -228,7 +297,7 @@ export default function ResultPage() {
                 </h4>
                 {loadingStep === index && (
                   <p
-                    className="text-[10px] mt-2 bg-white/10 p-2 rounded-xl"
+                    className="text-[10px] mt-2 bg-white/10 p-2 rounded-xl animate-fade-in"
                     dangerouslySetInnerHTML={{ __html: phase.detail }}
                   />
                 )}
@@ -238,14 +307,30 @@ export default function ResultPage() {
         </div>
         <style
           dangerouslySetInnerHTML={{
-            __html: `@keyframes sphereMorph { 0% { border-radius: 60% 40% 30% 70%; transform: rotate(0deg); } 50% { border-radius: 30% 60% 70% 40%; transform: rotate(180deg); } 100% { border-radius: 60% 40% 30% 70%; transform: rotate(360deg); } } .animate-sphere-morph { animation: sphereMorph 8s infinite; }`,
+            __html: `@keyframes sphereMorph { 0% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(0deg) scale(1); } 50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; transform: rotate(180deg) scale(1.1); } 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(360deg) scale(1); } } .animate-sphere-morph { animation: sphereMorph 8s ease-in-out infinite; } .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; } @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }`,
           }}
         />
       </div>
     );
   }
 
-  // ✅ [기능] 위험도 기호 + 색상 설정
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-zinc-50 px-6 text-center">
+        <AlertCircle size={48} className="text-red-500 mb-4" />
+        <p className="text-red-500 font-semibold mb-6">{error}</p>
+        <Link
+          href="/upload"
+          className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold"
+        >
+          새로운 분석하러 가기
+        </Link>
+      </div>
+    );
+  }
+
+  if (!resultData) return null; // 에러 방지
+
   const riskBadgeMap: any = {
     High: {
       bg: "bg-red-50",
@@ -295,7 +380,7 @@ export default function ResultPage() {
             <span className="text-blue-600 font-bold text-xs tracking-widest uppercase mb-2 block">
               Analysis Report
             </span>
-            <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">
+            <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight text-left">
               분석 결과 리포트
             </h1>
           </div>
@@ -308,7 +393,7 @@ export default function ResultPage() {
         </div>
 
         {resultData.explanation && (
-          <div className="mb-10 p-6 bg-blue-50/30 rounded-3xl border border-blue-100/50 text-sm text-gray-700 flex gap-3">
+          <div className="mb-10 p-6 bg-blue-50/30 rounded-3xl border border-blue-100/50 text-sm text-gray-700 leading-relaxed flex gap-3 text-left">
             <Info size={18} className="text-blue-500 shrink-0 mt-0.5" />
             <p>{resultData.explanation}</p>
           </div>
@@ -322,7 +407,7 @@ export default function ResultPage() {
             <h4 className="text-zinc-400 font-bold text-sm mb-6 text-left">
               수정 전 위반 문구
             </h4>
-            <div className="h-48 overflow-y-auto text-lg text-zinc-600 text-left">
+            <div className="h-48 overflow-y-auto text-lg text-zinc-600 text-left leading-relaxed">
               {resultData.spellCheck.original.map((chunk: any, i: number) => (
                 <span
                   key={i}
@@ -344,7 +429,7 @@ export default function ResultPage() {
             <h4 className="text-blue-600 font-bold text-sm mb-6 text-left">
               AI 정화 완료
             </h4>
-            <div className="h-48 overflow-y-auto text-lg text-zinc-800 text-left">
+            <div className="h-48 overflow-y-auto text-lg text-zinc-800 text-left leading-relaxed">
               {resultData.spellCheck.corrected.map((chunk: any, i: number) => (
                 <span
                   key={i}
@@ -361,12 +446,11 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {/* 광고 배너 */}
         <div className="mb-12 w-full overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 flex flex-col items-center justify-center p-6 cursor-pointer hover:shadow-md transition-all group">
           <span className="text-[10px] text-gray-400 font-bold bg-gray-200 px-2 py-0.5 rounded-sm mb-2 self-start">
             AD
           </span>
-          <p className="text-gray-700 font-bold group-hover:text-blue-600 transition-colors">
+          <p className="text-gray-700 font-bold text-sm md:text-base group-hover:text-blue-600 transition-colors">
             더 많은 광고 문구를 무제한으로 분석하고 싶다면? 🚀
           </p>
           <p className="text-xs text-gray-500 mt-1">
@@ -374,41 +458,79 @@ export default function ResultPage() {
           </p>
         </div>
 
-        <div className="mb-12 text-left">
-          <h3 className="font-bold text-zinc-800 flex items-center gap-2 mb-6">
-            ✨ 다른 AI 교정 제안 둘러보기{" "}
-            <span className="text-sm font-normal text-zinc-400">
-              (클릭하여 위 칸에 적용)
-            </span>
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {resultData.suggestions.map((item: any, index: number) => (
-              <div
-                key={item.id}
-                onClick={() => handleSuggestionClick(item.text)}
-                className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-400 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between h-full active:scale-95"
-              >
-                <span className="text-xs font-black text-blue-600 bg-blue-50 border border-blue-100 rounded-md px-3 py-1 inline-block w-fit">
-                  추천 문구 {index + 1}
-                </span>
-                <p className="mt-4 text-zinc-700 font-medium leading-relaxed">
-                  {item.text}
-                </p>
-              </div>
-            ))}
+        {resultData.suggestions.length > 0 && (
+          <div className="mb-12 text-left">
+            <h3 className="font-bold text-zinc-800 flex items-center gap-2 mb-6">
+              ✨ 다른 AI 교정 제안 둘러보기{" "}
+              <span className="text-sm font-normal text-zinc-400">
+                (클릭하여 위 칸에 적용)
+              </span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {resultData.suggestions.map((item: any, index: number) => (
+                <div
+                  key={item.id}
+                  onClick={() => handleSuggestionClick(item.text)}
+                  className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-400 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between h-full active:scale-95"
+                >
+                  <div>
+                    <span className="text-xs font-black text-blue-600 bg-blue-50 border border-blue-100 rounded-md px-3 py-1 inline-block w-fit">
+                      {item.tag || `추천 문구 ${index + 1}`}
+                    </span>
+                    <p className="mt-4 text-zinc-700 font-medium leading-relaxed">
+                      {item.text}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-end gap-2 border-t border-gray-50 pt-4 mt-4">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleFeedback(item.style, 1);
+                      }}
+                      className="p-1.5 rounded-full text-gray-300 hover:bg-gray-100 hover:text-blue-500 transition-colors"
+                      aria-label="좋아요"
+                    >
+                      <ThumbsUp size={14} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleFeedback(item.style, -1);
+                      }}
+                      className="p-1.5 rounded-full text-gray-300 hover:bg-gray-100 hover:text-red-500 transition-colors"
+                      aria-label="별로예요"
+                    >
+                      <ThumbsDown size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        <footer className="flex flex-col md:flex-row gap-4">
-          <Link
-            href="/upload"
-            className="flex-1 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-bold hover:bg-blue-700 shadow-lg gap-2 transition-all active:scale-95"
-          >
-            <ArrowLeft size={18} /> 새 이미지 검사
-          </Link>
-          <button className="px-10 h-14 border border-gray-200 text-gray-600 rounded-2xl flex items-center justify-center font-bold hover:bg-gray-50 transition-all gap-2">
-            <Scale size={18} /> 결과 보고서 저장 (PDF)
-          </button>
+        <footer className="space-y-8">
+          <div className="flex items-start gap-2 text-gray-400 max-w-2xl mx-auto text-center justify-center">
+            <Info size={14} className="mt-0.5 shrink-0" />
+            <p className="text-[11px] leading-relaxed">
+              본 서비스는 텍스트 데이터만을 분석하며, 최종 광고 시안 확정 전
+              반드시 법률 전문가의 검토를 거치시기 바랍니다.
+            </p>
+          </div>
+          <div className="flex flex-col md:flex-row gap-4">
+            <Link
+              href="/upload"
+              className="flex-1 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-bold hover:bg-blue-700 shadow-lg gap-2 transition-all active:scale-95"
+            >
+              <ArrowLeft size={18} /> 새 이미지 검사
+            </Link>
+            <button
+              onClick={handleDownloadPDF}
+              className="px-10 h-14 border border-gray-200 text-gray-600 rounded-2xl flex items-center justify-center font-bold hover:bg-gray-50 transition-all gap-2"
+            >
+              <Scale size={18} /> 결과 보고서 저장 (PDF)
+            </button>
+          </div>
         </footer>
       </main>
     </div>

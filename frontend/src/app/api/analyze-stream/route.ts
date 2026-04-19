@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+const BACKEND_URL = "http://127.0.0.1:8080";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,14 +14,14 @@ export async function GET(req: NextRequest) {
       {
         method: "GET",
         headers: { Accept: "text/event-stream" },
-      }
+      },
     );
 
     if (!backendRes.ok || !backendRes.body) {
-      return new Response(
-        JSON.stringify({ error: "백엔드 연결 실패" }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "백엔드 연결 실패" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     // 백엔드 SSE 스트림을 프론트로 그대로 전달
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
   } catch (error: any) {
     return new Response(
       JSON.stringify({ error: error.message || "서버 오류" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 }

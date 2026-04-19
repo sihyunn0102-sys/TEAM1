@@ -1,4 +1,4 @@
-1"""
+"""
 app/main.py  ── FastAPI 진입점
 ────────────────────────────────────────────────────────────
 AdGuard 백엔드 API 서버.
@@ -45,6 +45,8 @@ sys.path.insert(0, str(_ROOT))
 from dotenv import load_dotenv
 load_dotenv(_ROOT / ".env")   # .env를 다른 모든 import 전에 로드
 
+from dotenv import load_dotenv
+load_dotenv(_ROOT / ".env")   # .env를 다른 모든 import 전에 로드
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.exceptions import HTTPException as FastAPIHTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -464,11 +466,32 @@ async def post_report(request: Request):
 
     try:
         from report_generator import generate_report
+        import os
+
         pdf_path = generate_report(task_id, entity)
-        return FileResponse(
-            path=pdf_path,
+
+        def iter_pdf():
+            try:
+                with open(pdf_path, "rb") as f:
+                    while True:
+                        chunk = f.read(65536)
+                        if not chunk:
+                            break
+                        yield chunk
+            finally:
+                try:
+                    os.unlink(pdf_path)
+                except Exception:
+                    pass
+
+        filename = f"adguard_report_{task_id[:8]}.pdf"
+        return StreamingResponse(
+            iter_pdf(),
             media_type="application/pdf",
-            filename=f"adguard_report_{task_id[:8]}.pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Access-Control-Expose-Headers": "Content-Disposition",
+            },
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PDF 생성 오류: {e}")

@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 
+<<<<<<< HEAD
 const BACKEND_URL = "http://127.0.0.1:8080";
+=======
+// Azure Portal의 Configuration에 등록한 그 주소입니다.
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+>>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
 
 export async function GET(req: NextRequest) {
   try {
@@ -8,34 +13,61 @@ export async function GET(req: NextRequest) {
     const text = searchParams.get("text") || "";
     const product_type = searchParams.get("product_type") || "general_cosmetic";
 
+    if (!text) {
+      return new Response(JSON.stringify({ error: "텍스트가 없습니다." }), { status: 400 });
+    }
+
     const params = new URLSearchParams({ text, product_type });
+    
+    // 파이썬 백엔드(FastAPI 등)로 스트리밍 요청 전달
     const backendRes = await fetch(
       `${BACKEND_URL}/analyze/stream?${params.toString()}`,
       {
         method: "GET",
         headers: { Accept: "text/event-stream" },
+<<<<<<< HEAD
       },
     );
 
     if (!backendRes.ok || !backendRes.body) {
       return new Response(JSON.stringify({ error: "백엔드 연결 실패" }), {
+=======
+        cache: "no-store",
+      }
+    );
+
+    if (!backendRes.ok || !backendRes.body) {
+      console.error("백엔드 연결 실패:", backendRes.statusText);
+      return new Response(JSON.stringify({ error: "분석 서버 연결 실패" }), {
+>>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
         status: 500,
         headers: { "Content-Type": "application/json" },
       });
     }
 
-    // 백엔드 SSE 스트림을 프론트로 그대로 전달
+    // 백엔드의 스트림 데이터를 브라우저로 그대로 전달 (Proxy)
     return new Response(backendRes.body, {
       headers: {
         "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no", // 스트리밍 끊김 방지
       },
     });
+<<<<<<< HEAD
   } catch (error: any) {
     return new Response(
       JSON.stringify({ error: error.message || "서버 오류" }),
       { status: 500, headers: { "Content-Type": "application/json" } },
     );
+=======
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : "서버 오류 발생";
+    console.error("API Route 에러:", msg);
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+>>>>>>> 88e16f0424dd7c6ddc23d9c51274fcce761af539
   }
 }

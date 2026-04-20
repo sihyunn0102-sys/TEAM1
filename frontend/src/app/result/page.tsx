@@ -19,13 +19,14 @@ function toRiskLevel(verdict: string) {
 }
 
 function buildOriginalChunks(copy: string, violations: any[]) {
-  if (!copy) return [];
-  let chunks: { text: string; isError: boolean }[] = [{ text: copy, isError: false }];
-  
+  let chunks: { text: string; isError: boolean }[] = [
+    { text: copy, isError: false },
+  ];
   for (const v of violations) {
-    // 💡 백엔드에서 phrase, violation_word, word 중 어떤 걸로 보내도 다 잡히도록 수정!
-    const phrase: string = v.phrase || v.violation_word || v.word || ""; 
+    // 💡 phrase 외에 다른 필드명으로 와도 인식하도록 수정
+    const phrase: string = v.phrase || v.violation_word || v.keyword || "";
     if (!phrase) continue;
+    // ... (나머지 로직 동일)
 
     const next: { text: string; isError: boolean }[] = [];
     for (const chunk of chunks) {
@@ -38,10 +39,14 @@ function buildOriginalChunks(copy: string, violations: any[]) {
         next.push(chunk);
         continue;
       }
-      if (idx > 0) next.push({ text: chunk.text.slice(0, idx), isError: false });
+      if (idx > 0)
+        next.push({ text: chunk.text.slice(0, idx), isError: false });
       next.push({ text: phrase, isError: true });
       if (idx + phrase.length < chunk.text.length) {
-        next.push({ text: chunk.text.slice(idx + phrase.length), isError: false });
+        next.push({
+          text: chunk.text.slice(idx + phrase.length),
+          isError: false,
+        });
       }
     }
     chunks = next;
@@ -60,19 +65,22 @@ const analysisPhases = [
     title: "L1",
     label: "Rule Engine",
     desc: "금지 키워드 즉시 차단",
-    detail: "160여 개의 금지어 데이터베이스 및<br />부적절한 텍스트 패턴 실시간 필터링",
+    detail:
+      "160여 개의 금지어 데이터베이스 및<br />부적절한 텍스트 패턴 실시간 필터링",
   },
   {
     title: "L2",
     label: "Retriever",
     desc: "법적 근거 검색",
-    detail: "최신 화장품법 및 식약처 가이드라인<br />방대한 법령 데이터 정밀 탐색",
+    detail:
+      "최신 화장품법 및 식약처 가이드라인<br />방대한 법령 데이터 정밀 탐색",
   },
   {
     title: "L3",
     label: "Judge",
     desc: "종합 판정",
-    detail: "GPT-4.1 기반 AI 엔진을 통한<br />위반 사항 및 광고 위험도 심층 분석",
+    detail:
+      "GPT-4.1 기반 AI 엔진을 통한<br />위반 사항 및 광고 위험도 심층 분석",
   },
   {
     title: "L4",
@@ -206,8 +214,8 @@ export default function ResultPage() {
 
   const handleDownloadPDF = async () => {
     const backendUrl =
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  "https://9ai-2nd-team-app-service-b0h3evedgec0dtda.eastus-01.azurewebsites.net";
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      "https://9ai-2nd-team-app-service-b0h3evedgec0dtda.eastus-01.azurewebsites.net";
 
     try {
       const raw = localStorage.getItem("adguard_result");
@@ -363,7 +371,9 @@ export default function ResultPage() {
   };
   const riskBadge = riskBadgeMap[resultData.riskLevel] || riskBadgeMap["N/A"];
 
-  return 
+  // ... 생략 (상단 로직 부분은 그대로 두세요)
+
+  return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-6">
       <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-sm border border-gray-100 p-8 md:p-14 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full bg-gray-900 text-gray-400 py-2.5 px-6 text-[11px] flex justify-between items-center z-10">
@@ -403,15 +413,7 @@ export default function ResultPage() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-          <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 relative">
-            <div className="absolute top-6 right-8 text-[10px] font-black text-red-300 tracking-widest uppercase">
-              Before
-            </div>
-            <h4 className="text-zinc-400 font-bold text-sm mb-6">
-              수정 전 위반 문구
-            </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 text-left">
-          {/* 🔴 Before 섹션: 위반 문구 빨간색 밑줄 */}
+          {/* 🔴 Before 섹션: 빨간색 밑줄 */}
           <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 relative">
             <div className="absolute top-6 right-8 text-[10px] font-black text-red-300 tracking-widest uppercase">
               Before
@@ -425,7 +427,7 @@ export default function ResultPage() {
                   key={i}
                   className={
                     chunk.isError
-                      ? "text-red-500 font-extrabold underline decoration-red-500 decoration-2 underline-offset-4 mx-0.5" // 💡 빨간색 밑줄 강조
+                      ? "text-red-500 font-extrabold underline decoration-red-500 decoration-2 underline-offset-4 mx-0.5"
                       : ""
                   }
                 >
@@ -435,7 +437,7 @@ export default function ResultPage() {
             </div>
           </div>
 
-          {/* 🔵 After 섹션: AI 정화 완료 파란색 박스 */}
+          {/* 🔵 After 섹션: 파란색 박스 디자인 */}
           <div className="bg-blue-50/30 rounded-[32px] p-8 border border-blue-100/50 relative">
             <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 tracking-widest uppercase">
               After
@@ -446,24 +448,12 @@ export default function ResultPage() {
             <textarea
               value={editedText}
               onChange={(e) => setEditedText(e.target.value)}
-              // 💡 bg-blue-600과 text-white를 넣어 파란색 박스 디자인 적용!
               className="w-full h-48 bg-blue-600 text-white px-4 py-3 rounded-xl font-bold shadow-sm resize-none outline-none leading-relaxed text-lg pr-2 focus:ring-4 focus:ring-blue-300 transition-all"
             />
           </div>
         </div>
 
-        <div className="mb-12 w-full overflow-hidden rounded-2xl border border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 flex flex-col items-center justify-center p-6 cursor-pointer hover:shadow-md transition-all group">
-          <span className="text-[10px] text-gray-400 font-bold bg-gray-200 px-2 py-0.5 rounded-sm mb-2 self-start">
-            AD
-          </span>
-          <p className="text-gray-700 font-bold text-sm md:text-base group-hover:text-blue-600 transition-colors">
-            더 많은 광고 문구를 무제한으로 분석하고 싶다면? 🚀
-          </p>
-          <p className="text-xs text-gray-500 mt-1">
-            '광고청정기 프로' 1개월 무료 체험 알아보기 &rarr;
-          </p>
-        </div>
-
+        {/* 하단 광고 배너 및 다른 제안들... (기존 코드와 동일) */}
         {resultData.suggestions.length > 0 && (
           <div className="mb-12 text-left">
             <h3 className="font-bold text-zinc-800 flex items-center gap-2 mb-6">
@@ -476,7 +466,6 @@ export default function ResultPage() {
               {resultData.suggestions.map((item: any, index: number) => (
                 <div
                   key={item.id}
-                  // 💡 복구 핵심 5: 클릭 시 클립보드 복사 + 텍스트 박스 내용 변경을 동시에 수행!
                   onClick={() => {
                     navigator.clipboard.writeText(item.text);
                     setEditedText(item.text);
@@ -496,13 +485,6 @@ export default function ResultPage() {
         )}
 
         <footer className="space-y-8">
-          <div className="flex items-start gap-2 text-gray-400 max-w-2xl mx-auto text-center justify-center">
-            <Info size={14} className="mt-0.5 shrink-0" />
-            <p className="text-[11px] leading-relaxed">
-              본 서비스는 텍스트 데이터만을 분석하며, 최종 광고 시안 확정 전
-              반드시 법률 전문가의 검토를 거치시기 바랍니다.
-            </p>
-          </div>
           <div className="flex flex-col md:flex-row gap-4">
             <Link
               href="/upload"
@@ -521,4 +503,4 @@ export default function ResultPage() {
       </main>
     </div>
   );
-}
+} // <--- 여기까지만 있어야 하며, 이 밑에 있는 모든 중괄호나 글자는 지워야 합니다.

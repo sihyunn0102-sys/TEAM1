@@ -429,45 +429,49 @@ export default function ResultPage() {
           </div>
         )}
 
-        {/* --- 🛠️ 수정할 부분: Before/After 박스 영역 --- */}
+        {/* --- 여기서부터 복사하세요 --- */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 text-left">
-          {/* 🔴 Before 섹션: 빨간 라벨 + 취소선(line-through) */}
+          {/* 🔴 Before 섹션: 빨간 라벨 + 물결 밑줄 + 설명 말풍선 */}
           <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 relative">
             <span className="text-[10px] text-gray-400 font-bold bg-gray-200 px-2 py-0.5 rounded-sm mb-2 block w-fit">
               AD
             </span>
             <div className="bg-red-500 text-white rounded-full px-4 py-1.5 w-fit mb-6 text-sm font-bold">
               수정 전 위반 문구
-            {/* 💡 위쪽 라벨이 잘리지 않도록 pt-8(여백)을 추가했습니다. */}
+            </div>
+
             <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-600 pr-2 pt-8">
-              {resultData.spellCheck.original.map((chunk: any, i: number) => (
+              {resultData.spellCheck.original.map((chunk: any, i: number) =>
                 chunk.isError ? (
-                  // 💡 relative를 주어 텍스트 바로 위에 라벨을 띄울 수 있게 합니다.
-                  <span key={i} className="relative inline-block mx-1 group cursor-help mt-4">
-                    
-                    {/* 🔴 텍스트 바로 위에 뜨는 '어떤 부분을 수정해야 하는지' 알려주는 라벨 */}
+                  <span
+                    key={i}
+                    className="relative inline-block mx-1 group cursor-help mt-4"
+                  >
+                    {/* 텍스트 위로 뜨는 빨간색 에러 이유 라벨 */}
                     <span className="absolute -top-6 left-0 bg-red-100 text-red-600 border border-red-200 text-[10px] font-black px-2 py-0.5 rounded shadow-sm whitespace-nowrap z-10 flex items-center gap-1">
                       <AlertCircle size={10} />
                       {chunk.violation?.type || "금지어/주의어"}
                     </span>
-                    
-                    {/* 🔴 텍스트 아래에 빨간색 라인(물결 밑줄) 치기 */}
+
+                    {/* 빨간색 물결 밑줄 텍스트 */}
                     <span className="text-red-600 font-extrabold underline decoration-red-500 decoration-wavy decoration-2 underline-offset-4">
                       {chunk.text}
                     </span>
 
-                    {/* (선택) 마우스를 올리면 왜 틀렸는지 상세 설명이 말풍선으로 뜹니다! */}
+                    {/* 마우스 올리면 뜨는 까만색 상세 설명 말풍선 */}
                     <span className="absolute bottom-full left-0 mb-8 hidden group-hover:block w-max max-w-xs bg-gray-800 text-white text-xs px-3 py-2 rounded-lg shadow-xl z-20">
-                      {chunk.violation?.explanation || "수정이 필요한 문구입니다."}
+                      {chunk.violation?.explanation ||
+                        "수정이 필요한 문구입니다."}
                     </span>
                   </span>
                 ) : (
                   <span key={i}>{chunk.text}</span>
-                )
-              ))}
+                ),
+              )}
             </div>
+          </div>
 
-          {/* 🔵 After 섹션: 흰색 배경 + 파란 라벨 + 진한 글씨 */}
+          {/* 🔵 After 섹션: 흰색 배경 테마 */}
           <div className="bg-blue-50/30 rounded-[32px] p-8 relative border border-blue-100">
             <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 tracking-widest uppercase">
               After
@@ -478,7 +482,7 @@ export default function ResultPage() {
             <textarea
               readOnly
               value={editedText}
-              className="w-full h-48 bg-white text-zinc-800 px-4 py-3 rounded-xl font-bold shadow-sm resize-none outline-none leading-relaxed text-lg pr-2 focus:ring-4 focus:ring-blue-300 transition-all border border-blue-50"
+              className="w-full h-48 bg-white text-zinc-800 px-4 py-3 rounded-xl font-bold shadow-sm resize-none outline-none leading-relaxed text-lg pr-2 border border-blue-50"
             />
           </div>
         </div>

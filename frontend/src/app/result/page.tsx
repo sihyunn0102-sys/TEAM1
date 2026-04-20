@@ -19,12 +19,14 @@ function toRiskLevel(verdict: string) {
 }
 
 function buildOriginalChunks(copy: string, violations: any[]) {
-  let chunks: { text: string; isError: boolean }[] = [
-    { text: copy, isError: false },
-  ];
+  if (!copy) return [];
+  let chunks: { text: string; isError: boolean }[] = [{ text: copy, isError: false }];
+  
   for (const v of violations) {
-    const phrase: string = v.phrase;
+    // 💡 백엔드에서 phrase, violation_word, word 중 어떤 걸로 보내도 다 잡히도록 수정!
+    const phrase: string = v.phrase || v.violation_word || v.word || ""; 
     if (!phrase) continue;
+
     const next: { text: string; isError: boolean }[] = [];
     for (const chunk of chunks) {
       if (chunk.isError) {
@@ -36,14 +38,11 @@ function buildOriginalChunks(copy: string, violations: any[]) {
         next.push(chunk);
         continue;
       }
-      if (idx > 0)
-        next.push({ text: chunk.text.slice(0, idx), isError: false });
+      if (idx > 0) next.push({ text: chunk.text.slice(0, idx), isError: false });
       next.push({ text: phrase, isError: true });
-      if (idx + phrase.length < chunk.text.length)
-        next.push({
-          text: chunk.text.slice(idx + phrase.length),
-          isError: false,
-        });
+      if (idx + phrase.length < chunk.text.length) {
+        next.push({ text: chunk.text.slice(idx + phrase.length), isError: false });
+      }
     }
     chunks = next;
   }
@@ -60,32 +59,32 @@ const analysisPhases = [
   {
     title: "L1",
     label: "Rule Engine",
-    desc: "금지어 즉시 식별",
-    detail: "블랙리스트 기반<br />시술/의약품 오인 용어 체크",
+    desc: "금지 키워드 즉시 차단",
+    detail: "160여 개의 금지어 데이터베이스 및<br />부적절한 텍스트 패턴 실시간 필터링",
   },
   {
     title: "L2",
     label: "Retriever",
     desc: "법적 근거 검색",
-    detail: "화장품법 제13조 및<br />식약처 가이드라인 참조",
+    detail: "최신 화장품법 및 식약처 가이드라인<br />방대한 법령 데이터 정밀 탐색",
   },
   {
     title: "L3",
     label: "Judge",
-    desc: "AI 종합 판정",
-    detail: "GPT-4o 기반 위반 사항<br />및 위험도 등급 확정",
+    desc: "종합 판정",
+    detail: "GPT-4.1 기반 AI 엔진을 통한<br />위반 사항 및 광고 위험도 심층 분석",
   },
   {
     title: "L4",
     label: "Rewriter",
-    desc: "수정 제안 생성",
-    detail: "안전성/마케팅 톤을 고려한<br />대안 문구 작성",
+    desc: "대안 카피 생성",
+    detail: "브랜드 톤과 법규 준수를 고려한<br />최적의 마케팅 문구 3종 제안",
   },
   {
     title: "L5",
     label: "Re-Judge",
-    desc: "최종 검증",
-    detail: "수정안에 대한<br />2차 교차 검증 수행",
+    desc: "수정안 안전성 검증",
+    detail: "생성된 모든 문구에 대한<br />최종 신뢰도 및 안전성 교차 검증",
   },
 ];
 

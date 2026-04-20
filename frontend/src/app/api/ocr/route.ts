@@ -28,13 +28,21 @@ export async function POST(req: NextRequest) {
 
     const arrayBuffer = await file.arrayBuffer();
 
+    // Azure Document Intelligence는 표준 MIME 타입만 허용.
+    // 일부 브라우저/운영체제에서 .jpg 파일이 "image/jpg"(비표준)로 전달되는 경우가 있어,
+    // 이를 표준 MIME 타입인 "image/jpeg"로 정규화해줘야 OCR 요청이 성공함.
+    let contentType = file.type || "application/octet-stream";
+    if (contentType === "image/jpg") {
+      contentType = "image/jpeg";
+    }
+
     const analyzeRes = await fetch(
       `${ENDPOINT}/documentintelligence/documentModels/prebuilt-layout:analyze?api-version=2024-11-30`,
       {
         method: "POST",
         headers: {
           "Ocp-Apim-Subscription-Key": API_KEY,
-          "Content-Type": file.type || "application/octet-stream",
+          "Content-Type": contentType,
         },
         body: arrayBuffer,
       },

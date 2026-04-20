@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'backend/**' # 백엔드 폴더 수정 시에만 작동
+      - 'backend/**'
   workflow_dispatch:
 
 jobs:
@@ -19,20 +19,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        working-directory: backend
-        run: |
-          python -m venv antenv
-          source antenv/bin/activate
-          pip install -r requirements.txt
-                
+      # 빌드 아티팩트 업로드 (가상환경 제외, 소스 코드만)
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
           name: python-app
           path: |
-            backend/        # 핵심: backend 폴더 내부를 루트로 업로드
-            !backend/antenv/ # 가상환경 폴더 제외
+            backend/
+            !backend/antenv/
 
   deploy:
     runs-on: ubuntu-latest
@@ -58,4 +52,3 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: '9ai-2nd-team-app-service'
-          slot-name: 'Production'

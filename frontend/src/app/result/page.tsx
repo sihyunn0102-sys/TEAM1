@@ -363,7 +363,7 @@ export default function ResultPage() {
   };
   const riskBadge = riskBadgeMap[resultData.riskLevel] || riskBadgeMap["N/A"];
 
-  return (
+  return 
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-6">
       <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-sm border border-gray-100 p-8 md:p-14 relative overflow-hidden">
         <div className="absolute top-0 left-0 w-full bg-gray-900 text-gray-400 py-2.5 px-6 text-[11px] flex justify-between items-center z-10">

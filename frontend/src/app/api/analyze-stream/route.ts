@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-const BACKEND_URL = "http://127.0.0.1:8080";
+const BACKEND_URL = "http://9ai-2nd-team-app-service-b0h3evedgec0dtda.eastus-01.azurewebsites.net";
 
 export async function GET(req: NextRequest) {
   try {

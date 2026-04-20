@@ -411,14 +411,22 @@ export default function ResultPage() {
             <h4 className="text-zinc-400 font-bold text-sm mb-6">
               수정 전 위반 문구
             </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 text-left">
+          {/* 🔴 Before 섹션: 위반 문구 빨간색 밑줄 */}
+          <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 relative">
+            <div className="absolute top-6 right-8 text-[10px] font-black text-red-300 tracking-widest uppercase">
+              Before
+            </div>
+            <h4 className="text-zinc-400 font-bold text-sm mb-6">
+              수정 전 위반 문구
+            </h4>
             <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-600 pr-2">
               {resultData.spellCheck.original.map((chunk: any, i: number) => (
                 <span
                   key={i}
                   className={
                     chunk.isError
-                      ? // 💡 복구 핵심 3: 취소선(line-through) 대신 빨간색 밑줄(underline) 적용!
-                        "text-red-500 font-bold underline decoration-red-500 decoration-2 mx-0.5"
+                      ? "text-red-500 font-extrabold underline decoration-red-500 decoration-2 underline-offset-4 mx-0.5" // 💡 빨간색 밑줄 강조
                       : ""
                   }
                 >
@@ -427,6 +435,8 @@ export default function ResultPage() {
               ))}
             </div>
           </div>
+
+          {/* 🔵 After 섹션: AI 정화 완료 파란색 박스 */}
           <div className="bg-blue-50/30 rounded-[32px] p-8 border border-blue-100/50 relative">
             <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 tracking-widest uppercase">
               After
@@ -434,11 +444,11 @@ export default function ResultPage() {
             <h4 className="text-blue-600 font-bold text-sm mb-6">
               AI 정화 완료
             </h4>
-            {/* 💡 복구 핵심 4: 단순 텍스트를 입력 가능한 textarea로 교체! */}
             <textarea
               value={editedText}
               onChange={(e) => setEditedText(e.target.value)}
-              className="w-full h-48 bg-transparent resize-none outline-none leading-relaxed text-lg text-zinc-800 pr-2"
+              // 💡 bg-blue-600과 text-white를 넣어 파란색 박스 디자인 적용!
+              className="w-full h-48 bg-blue-600 text-white px-4 py-3 rounded-xl font-bold shadow-sm resize-none outline-none leading-relaxed text-lg pr-2 focus:ring-4 focus:ring-blue-300 transition-all"
             />
           </div>
         </div>

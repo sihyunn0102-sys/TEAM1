@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://9ai-2nd-team-app-service-b0h3evedgec0dtda.eastus-01.azurewebsites.net";
+const BACKEND_URL = process.env.BACKEND_URL || "https://9ai-2nd-team-app-service-b0h3evedgec0dtda.eastus-01.azurewebsites.net";
 
 export async function POST(req: NextRequest) {
   try {

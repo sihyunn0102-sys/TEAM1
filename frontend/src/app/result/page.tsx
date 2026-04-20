@@ -206,7 +206,9 @@ export default function ResultPage() {
   }
 
   const handleDownloadPDF = async () => {
-    const backendUrl = "http://127.0.0.1:8080";
+    const backendUrl =
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  "https://9ai-2nd-team-app-service-b0h3evedgec0dtda.eastus-01.azurewebsites.net";
 
     try {
       const raw = localStorage.getItem("adguard_result");

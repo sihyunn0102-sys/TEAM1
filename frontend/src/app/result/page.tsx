@@ -222,13 +222,80 @@ export default function ResultPage() {
     }
   };
 
+  // 💡 여기서부터
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center min-h-screen bg-white pt-20">
-        <div className="w-44 h-44 bg-gradient-to-tr from-blue-700 to-indigo-600 rounded-full animate-pulse shadow-xl mb-10"></div>
-        <h2 className="text-2xl font-bold">
-          AI 분석 중... ({analysisPhases[loadingStep].title})
-        </h2>
+      <div className="flex flex-col items-center min-h-screen bg-white font-sans overflow-hidden pt-20 pb-10">
+        <div className="relative w-64 h-64 flex items-center justify-center mb-16">
+          <div className="absolute w-full h-full bg-blue-400/15 blur-[80px] animate-pulse"></div>
+          <div className="relative w-44 h-44 bg-gradient-to-tr from-blue-700 via-cyan-500 to-indigo-600 rounded-full animate-sphere-morph shadow-[inset_0_0_30px_rgba(255,255,255,0.3)]"></div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="text-[10px] font-black tracking-[0.4em] text-white/90 uppercase mb-2">
+              Processing
+            </span>
+            <div className="flex gap-1.5 items-center">
+              <span className="text-xl font-black text-white">분석 중...</span>
+            </div>
+          </div>
+        </div>
+        <div className="w-full max-w-6xl px-10">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
+              AI 광고 컴플라이언스 엔진 가동 중
+            </h2>
+            <p className="text-gray-500 mt-2 text-sm">
+              현재 단계: {analysisPhases[loadingStep].title} -{" "}
+              {analysisPhases[loadingStep].label}
+            </p>
+          </div>
+          <div className="flex flex-row justify-center items-stretch gap-4">
+            {analysisPhases.map((phase, index) => (
+              <div
+                key={index}
+                className={`flex-1 transition-all duration-700 p-6 rounded-[32px] border flex flex-col items-center text-center ${
+                  loadingStep === index
+                    ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white"
+                    : loadingStep > index
+                      ? "bg-blue-50 border-blue-100 opacity-60"
+                      : "bg-gray-50 border-gray-100 opacity-30"
+                }`}
+              >
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black mb-4 ${
+                    loadingStep === index
+                      ? "bg-white text-blue-600"
+                      : "bg-blue-100 text-blue-600"
+                  }`}
+                >
+                  {loadingStep > index ? "✓" : index + 1}
+                </div>
+                <h4 className="font-bold text-xs mb-1">
+                  {phase.title} · {phase.label}
+                </h4>
+                {loadingStep === index && (
+                  <p
+                    className="text-[10px] mt-2 bg-white/10 p-2 rounded-xl animate-fade-in"
+                    dangerouslySetInnerHTML={{ __html: phase.detail }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
+          @keyframes sphereMorph {
+            0% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(0deg) scale(1); }
+            50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; transform: rotate(180deg) scale(1.1); }
+            100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(360deg) scale(1); }
+          }
+          .animate-sphere-morph { animation: sphereMorph 8s ease-in-out infinite; }
+          .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+          @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        `,
+          }}
+        />
       </div>
     );
   }

@@ -27,16 +27,22 @@ function toRiskLevel(verdict: string) {
 }
 
 function buildOriginalChunks(copy: string, violations: any[]) {
-  let chunks: { text: string; isError: boolean }[] = [
+  if (!copy) return [];
+  // 💡 수정 포인트: violation 데이터를 담을 수 있게 타입 확장!
+  let chunks: { text: string; isError: boolean; violation?: any }[] = [
     { text: copy, isError: false },
   ];
-  for (const v of violations) {
-    // 💡 phrase 외에 다른 필드명으로 와도 인식하도록 수정
-    const phrase: string = v.phrase || v.violation_word || v.keyword || "";
-    if (!phrase) continue;
-    // ... (나머지 로직 동일)
 
-    const next: { text: string; isError: boolean }[] = [];
+  for (const v of violations) {
+    const phrase: string = (
+      v.phrase ||
+      v.violation_word ||
+      v.keyword ||
+      ""
+    ).trim();
+    if (!phrase) continue;
+    const next: { text: string; isError: boolean; violation?: any }[] = [];
+
     for (const chunk of chunks) {
       if (chunk.isError) {
         next.push(chunk);
@@ -49,7 +55,10 @@ function buildOriginalChunks(copy: string, violations: any[]) {
       }
       if (idx > 0)
         next.push({ text: chunk.text.slice(0, idx), isError: false });
-      next.push({ text: phrase, isError: true });
+
+      // 💡 핵심: 에러가 난 텍스트에 백엔드에서 온 '위반 사유(v)'를 같이 넣어줍니다!
+      next.push({ text: phrase, isError: true, violation: v });
+
       if (idx + phrase.length < chunk.text.length) {
         next.push({
           text: chunk.text.slice(idx + phrase.length),
@@ -429,22 +438,34 @@ export default function ResultPage() {
             </span>
             <div className="bg-red-500 text-white rounded-full px-4 py-1.5 w-fit mb-6 text-sm font-bold">
               수정 전 위반 문구
-            </div>
-            <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-600 pr-2">
+            {/* 💡 위쪽 라벨이 잘리지 않도록 pt-8(여백)을 추가했습니다. */}
+            <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-600 pr-2 pt-8">
               {resultData.spellCheck.original.map((chunk: any, i: number) => (
-                <span
-                  key={i}
-                  className={
-                    chunk.isError
-                      ? "text-red-600 font-extrabold line-through decoration-red-600 decoration-2 mx-0.5"
-                      : ""
-                  }
-                >
-                  {chunk.text}
-                </span>
+                chunk.isError ? (
+                  // 💡 relative를 주어 텍스트 바로 위에 라벨을 띄울 수 있게 합니다.
+                  <span key={i} className="relative inline-block mx-1 group cursor-help mt-4">
+                    
+                    {/* 🔴 텍스트 바로 위에 뜨는 '어떤 부분을 수정해야 하는지' 알려주는 라벨 */}
+                    <span className="absolute -top-6 left-0 bg-red-100 text-red-600 border border-red-200 text-[10px] font-black px-2 py-0.5 rounded shadow-sm whitespace-nowrap z-10 flex items-center gap-1">
+                      <AlertCircle size={10} />
+                      {chunk.violation?.type || "금지어/주의어"}
+                    </span>
+                    
+                    {/* 🔴 텍스트 아래에 빨간색 라인(물결 밑줄) 치기 */}
+                    <span className="text-red-600 font-extrabold underline decoration-red-500 decoration-wavy decoration-2 underline-offset-4">
+                      {chunk.text}
+                    </span>
+
+                    {/* (선택) 마우스를 올리면 왜 틀렸는지 상세 설명이 말풍선으로 뜹니다! */}
+                    <span className="absolute bottom-full left-0 mb-8 hidden group-hover:block w-max max-w-xs bg-gray-800 text-white text-xs px-3 py-2 rounded-lg shadow-xl z-20">
+                      {chunk.violation?.explanation || "수정이 필요한 문구입니다."}
+                    </span>
+                  </span>
+                ) : (
+                  <span key={i}>{chunk.text}</span>
+                )
               ))}
             </div>
-          </div>
 
           {/* 🔵 After 섹션: 흰색 배경 + 파란 라벨 + 진한 글씨 */}
           <div className="bg-blue-50/30 rounded-[32px] p-8 relative border border-blue-100">

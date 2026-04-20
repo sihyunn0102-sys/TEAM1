@@ -107,3 +107,4 @@ def generate_report(task_id: str, entity: dict) -> str:
     )
 
     return pdf_path
+

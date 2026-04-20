@@ -12,9 +12,8 @@ export default function Home() {
         <p className="text-lg md:text-xl text-gray-600 max-w-2xl mb-10 px-4">
           광고청정기는 AI 기술을 활용하여 광고 위반 요소를 실시간으로 탐지하고
           <br />
-          안전한 광고 문화를 만들어갑니다. 화장품법 · 식약처 · 공정위 기준 위반 시 과태료 최대 500만원.
-          <br />
-          게시 전에 AI가 먼저 검토합니다.
+          안전한 광고 문화를 만들어갑니다. 복잡한 심의 기준을 한 번에
+          확인하세요.
         </p>
         <div className="flex gap-4">
           <Link
@@ -27,7 +26,7 @@ export default function Home() {
             href="/history"
             className="rounded-full border border-gray-300 bg-white px-8 py-4 text-lg font-semibold text-gray-700 transition-all hover:bg-gray-50"
           >
-            이전 검사 기록 보기
+            기록 확인하기
           </Link>
         </div>
       </section>
@@ -37,11 +36,11 @@ export default function Home() {
         <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-12">
           <div className="flex flex-col items-center text-center">
             <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center text-3xl mb-6">
-              🛡️
+              🔍
             </div>
-            <h3 className="text-xl font-bold mb-3">AI 기반 정밀 분석</h3>
+            <h3 className="text-xl font-bold mb-3">정밀 탐지</h3>
             <p className="text-gray-500 leading-relaxed">
-              이미지와 텍스트 속 광고 위반 문구를 <br /> AI가 정밀하게
+              이미지와 텍스트 속의 광고 위반 문구를 <br /> AI가 정밀하게
               분석합니다.
             </p>
           </div>
@@ -49,7 +48,7 @@ export default function Home() {
             <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center text-3xl mb-6">
               ⚡
             </div>
-            <h3 className="text-xl font-bold mb-3">30초 안에, 수정안까지</h3>
+            <h3 className="text-xl font-bold mb-3">빠른 결과</h3>
             <p className="text-gray-500 leading-relaxed">
               업로드와 동시에 결과를 확인하여 <br /> 마케팅 효율을 높일 수
               있습니다.
@@ -59,9 +58,9 @@ export default function Home() {
             <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center text-3xl mb-6">
               📁
             </div>
-            <h3 className="text-xl font-bold mb-3">팀 전체 검토 기록 유지</h3>
+            <h3 className="text-xl font-bold mb-3">이력 관리</h3>
             <p className="text-gray-500 leading-relaxed">
-              지난 검토 내역을 히스토리 페이지에서 <br /> 다시 조회할 수
+              지난 검토 내역을 히스토리 페이지에서 <br /> 언제든 다시 조회할 수
               있습니다.
             </p>
           </div>

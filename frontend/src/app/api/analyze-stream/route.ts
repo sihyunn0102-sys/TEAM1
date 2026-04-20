@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
       {
         method: "GET",
         headers: { Accept: "text/event-stream" },
+        cache: 'no-store',
       },
     );
 

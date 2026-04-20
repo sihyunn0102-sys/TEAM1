@@ -2,7 +2,15 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { AlertCircle, Info, ArrowLeft, ShieldCheck, Scale } from "lucide-react";
+import {
+  AlertCircle,
+  Info,
+  ArrowLeft,
+  ShieldCheck,
+  Scale,
+  CheckCircle2,
+  ChevronDown,
+} from "lucide-react";
 
 // --- 백엔드 연동용 유틸리티 ---
 function toRiskLevel(verdict: string) {
@@ -412,22 +420,23 @@ export default function ResultPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-          {/* 🔴 Before 섹션: 빨간색 밑줄 */}
+        {/* --- 🛠️ 수정할 부분: Before/After 박스 영역 --- */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 text-left">
+          {/* 🔴 Before 섹션: 빨간 라벨 + 취소선(line-through) */}
           <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 relative">
-            <div className="absolute top-6 right-8 text-[10px] font-black text-red-300 tracking-widest uppercase">
-              Before
-            </div>
-            <h4 className="text-zinc-400 font-bold text-sm mb-6">
+            <span className="text-[10px] text-gray-400 font-bold bg-gray-200 px-2 py-0.5 rounded-sm mb-2 block w-fit">
+              AD
+            </span>
+            <div className="bg-red-500 text-white rounded-full px-4 py-1.5 w-fit mb-6 text-sm font-bold">
               수정 전 위반 문구
-            </h4>
+            </div>
             <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-600 pr-2">
               {resultData.spellCheck.original.map((chunk: any, i: number) => (
                 <span
                   key={i}
                   className={
                     chunk.isError
-                      ? "text-red-500 font-extrabold underline decoration-red-500 decoration-2 underline-offset-4 mx-0.5"
+                      ? "text-red-600 font-extrabold line-through decoration-red-600 decoration-2 mx-0.5"
                       : ""
                   }
                 >
@@ -437,18 +446,18 @@ export default function ResultPage() {
             </div>
           </div>
 
-          {/* 🔵 After 섹션: 파란색 박스 디자인 */}
-          <div className="bg-blue-50/30 rounded-[32px] p-8 border border-blue-100/50 relative">
+          {/* 🔵 After 섹션: 흰색 배경 + 파란 라벨 + 진한 글씨 */}
+          <div className="bg-blue-50/30 rounded-[32px] p-8 relative border border-blue-100">
             <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 tracking-widest uppercase">
               After
             </div>
-            <h4 className="text-blue-600 font-bold text-sm mb-6">
+            <div className="bg-blue-600 text-white rounded-full px-4 py-1.5 w-fit mb-6 text-sm font-bold">
               AI 정화 완료
-            </h4>
+            </div>
             <textarea
+              readOnly
               value={editedText}
-              onChange={(e) => setEditedText(e.target.value)}
-              className="w-full h-48 bg-blue-600 text-white px-4 py-3 rounded-xl font-bold shadow-sm resize-none outline-none leading-relaxed text-lg pr-2 focus:ring-4 focus:ring-blue-300 transition-all"
+              className="w-full h-48 bg-white text-zinc-800 px-4 py-3 rounded-xl font-bold shadow-sm resize-none outline-none leading-relaxed text-lg pr-2 focus:ring-4 focus:ring-blue-300 transition-all border border-blue-50"
             />
           </div>
         </div>

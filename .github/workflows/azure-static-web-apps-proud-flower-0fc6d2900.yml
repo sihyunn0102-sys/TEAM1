@@ -4,12 +4,15 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'frontend/**' # 프론트엔드 폴더 수정 시에만 작동
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches:
       - main
+    paths:
+      - 'frontend/**'
 
-# 추가: 동일한 브랜치에서 새 배포가 시작되면 이전 배포를 자동으로 취소하여 충돌 방지
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -24,11 +27,7 @@ jobs:
        contents: read
     steps:
       - uses: actions/checkout@v3
-        with:
-          submodules: true
-          lfs: false
 
-      # 캐시를 활용해 빌드 속도를 높이고 오류 가능성을 줄입니다.
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
@@ -54,9 +53,9 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_PROUD_FLOWER_0FC6D2900 }}
           action: "upload"
-          app_location: "./frontend" 
+          app_location: "./frontend" # 프론트 폴더 위치
           api_location: "" 
-          output_location: "" # Next.js는 자동으로 인식하도록 비워두는 것이 정석입니다.
+          output_location: "" 
           github_id_token: ${{ steps.idtoken.outputs.result }}
         env: 
           NEXT_PUBLIC_BACKEND_URL: "https://9ai-2nd-team-app-service-b0h3evedgec0dtda.eastus-01.azurewebsites.net"
@@ -64,10 +63,8 @@ jobs:
   close_pull_request_job:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest
-    name: Close Pull Request Job
     steps:
       - name: Close Pull Request
-        id: closepullrequest
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_PROUD_FLOWER_0FC6D2900 }}

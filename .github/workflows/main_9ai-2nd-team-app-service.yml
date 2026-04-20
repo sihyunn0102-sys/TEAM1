@@ -33,8 +33,8 @@ jobs:
         with:
           name: python-app
           path: |
-            .
-            !antenv/
+            backend/
+            !backend/antenv/
 
   deploy:
     runs-on: ubuntu-latest
@@ -60,3 +60,4 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: '9ai-2nd-team-app-service'
+          package: .

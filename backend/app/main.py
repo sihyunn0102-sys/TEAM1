@@ -141,7 +141,6 @@ def _save_history(task_id: str, text: str, result: dict) -> None:
             # cascade.check()는 final_verdict 반환 → verdict 필드로 저장
             "verdict": result.get("final_verdict", result.get("verdict", "")),
             "risk_summary": result.get("explanation", result.get("risk_summary", "")),
-            "sponsored_missing": str(result.get("sponsored_missing", False)),
             "timestamp": datetime.now(timezone.utc).isoformat(),
             # PDF 리포트 생성용 전체 결과 (최대 32000자)
             "full_result": json.dumps(result, ensure_ascii=False)[:32000],
@@ -412,7 +411,6 @@ async def get_result(task_id: str):
             "status": "completed",
             "verdict": entity.get("verdict", ""),
             "risk_summary": entity.get("risk_summary", ""),
-            "sponsored_missing": entity.get("sponsored_missing", "False") == "True",
             "timestamp": entity.get("timestamp", ""),
         }
     except Exception as e:
@@ -436,7 +434,6 @@ async def get_history(limit: int = 20):
                 "task_id": e["RowKey"],
                 "verdict": e.get("verdict", ""),
                 "risk_summary": e.get("risk_summary", ""),
-                "sponsored_missing": e.get("sponsored_missing", "False") == "True",
                 "timestamp": e.get("timestamp", ""),
                 "text_preview": e.get("text", "")[:100] if e.get("text") else None,
             }

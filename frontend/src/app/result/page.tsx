@@ -103,6 +103,10 @@ export default function ResultPage() {
   const [loadingStep, setLoadingStep] = useState(0);
   const [resultData, setResultData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 💡 복구 핵심 1: 수정 후 텍스트를 담아둘 State 추가!
+  const [editedText, setEditedText] = useState("");
+
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -130,18 +134,15 @@ export default function ResultPage() {
     // SSE 연결
     const params = new URLSearchParams({ text, product_type: productType });
 
-    // 수정 포인트: 로그에 찍힌 /analyze/stream이 아니라, route.ts가 위치한 /api/analyze-stream으로 호출해야 합니다.
     const es = new EventSource(`/api/analyze-stream?${params.toString()}`);
     esRef.current = es;
 
-    // 백엔드에서 L1~L5 단계를 하나씩 끝낼 때마다 불 들어오게 하기
     es.addEventListener("progress", (e: any) => {
       const data = JSON.parse(e.data);
       const idx = stepToIndex[data.step];
       if (idx !== undefined) setLoadingStep(idx);
     });
 
-    // 최종 분석이 다 끝나서 데이터를 던져줄 때
     es.addEventListener("result", (e: any) => {
       const data = JSON.parse(e.data);
       localStorage.setItem("adguard_result", JSON.stringify(data));
@@ -190,6 +191,11 @@ export default function ResultPage() {
       tag: STYLE_LABELS[r.style] ?? r.style,
     }));
 
+    // 💡 복구 핵심 2: 분석이 끝나면 '수정 후' 텍스트 박스에 AI 추천 문구 채워넣기
+    if (safeRewrite) {
+      setEditedText(safeRewrite.text);
+    }
+
     setResultData({
       riskLevel: toRiskLevel(backend.final_verdict),
       explanation: backend.explanation ?? "",
@@ -200,7 +206,6 @@ export default function ResultPage() {
   }
 
   const handleDownloadPDF = async () => {
-    // 1. 아까 성공했던 백엔드 주소 (8080번 포트)
     const backendUrl = "http://127.0.0.1:8080";
 
     try {
@@ -219,7 +224,6 @@ export default function ResultPage() {
         return;
       }
 
-      // 2. 여기서부터가 진짜 다운로드 실행 코드!
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -228,12 +232,10 @@ export default function ResultPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      // 3. 에러 처리 괄호도 완벽하게 닫아줍니다!
       alert("PDF 다운로드 중 오류가 발생했습니다.");
     }
   };
 
-  // 로딩 화면 UI - 기존 디자인 그대로 유지
   if (isLoading) {
     return (
       <div className="flex flex-col items-center min-h-screen bg-white font-sans overflow-hidden pt-20 pb-10">
@@ -326,7 +328,7 @@ export default function ResultPage() {
     );
   }
 
-  if (!resultData) return null; // 에러 방지
+  if (!resultData) return null;
 
   const riskBadgeMap: any = {
     High: {
@@ -413,7 +415,8 @@ export default function ResultPage() {
                   key={i}
                   className={
                     chunk.isError
-                      ? "bg-red-100 text-red-700 px-1 rounded-md line-through decoration-red-300 decoration-2 mx-0.5"
+                      ? // 💡 복구 핵심 3: 취소선(line-through) 대신 빨간색 밑줄(underline) 적용!
+                        "text-red-500 font-bold underline decoration-red-500 decoration-2 mx-0.5"
                       : ""
                   }
                 >
@@ -429,20 +432,12 @@ export default function ResultPage() {
             <h4 className="text-blue-600 font-bold text-sm mb-6">
               AI 정화 완료
             </h4>
-            <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-800 pr-2">
-              {resultData.spellCheck.corrected.map((chunk: any, i: number) => (
-                <span
-                  key={i}
-                  className={
-                    chunk.isFix
-                      ? "bg-blue-600 text-white px-1.5 py-0.5 rounded-md font-bold mx-0.5 shadow-sm"
-                      : ""
-                  }
-                >
-                  {chunk.text}
-                </span>
-              ))}
-            </div>
+            {/* 💡 복구 핵심 4: 단순 텍스트를 입력 가능한 textarea로 교체! */}
+            <textarea
+              value={editedText}
+              onChange={(e) => setEditedText(e.target.value)}
+              className="w-full h-48 bg-transparent resize-none outline-none leading-relaxed text-lg text-zinc-800 pr-2"
+            />
           </div>
         </div>
 
@@ -463,14 +458,18 @@ export default function ResultPage() {
             <h3 className="font-bold text-zinc-800 flex items-center gap-2 mb-6">
               ✨ 다른 AI 교정 제안 둘러보기{" "}
               <span className="text-sm font-normal text-zinc-400">
-                (클릭하여 복사)
+                (클릭하여 복사 및 적용)
               </span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {resultData.suggestions.map((item: any, index: number) => (
                 <div
                   key={item.id}
-                  onClick={() => navigator.clipboard.writeText(item.text)}
+                  // 💡 복구 핵심 5: 클릭 시 클립보드 복사 + 텍스트 박스 내용 변경을 동시에 수행!
+                  onClick={() => {
+                    navigator.clipboard.writeText(item.text);
+                    setEditedText(item.text);
+                  }}
                   className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-200 hover:shadow-xl transition-all cursor-pointer group flex flex-col justify-between h-full"
                 >
                   <span className="text-xs font-black tracking-widest text-blue-600 bg-blue-50 border border-blue-100 rounded-md px-3 py-1 inline-block w-fit">

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 
-const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8000";
+const BACKEND_URL = process.env.BACKEND_URL || "http://9ai-2nd-team-app-service-b0h3evedgec0dtda.eastus-01.azurewebsites.net";
 
 export async function POST(req: NextRequest) {
   try {

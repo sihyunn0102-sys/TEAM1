@@ -367,8 +367,8 @@ export default function ResultPage() {
                       <AlertCircle size={10} />
                       {chunk.violation?.type || "금지어/주의어"}
                     </span>
-                    {/* 빨간색 물결 밑줄 */}
-                    <span className="text-red-600 font-extrabold underline decoration-red-500 decoration-wavy decoration-2 underline-offset-4">
+                    {/* 연한 빨간색 배경 하이라이트 + 텍스트 붉은색 + 살짝 둥근 모서리 */}
+                    <span className="text-red-600 font-extrabold bg-red-100 px-1.5 py-0.5 rounded-md underline decoration-red-500 underline-offset-4">
                       {chunk.text}
                     </span>
                     {/* 호버 시 뜨는 상세 설명 */}

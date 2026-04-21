@@ -262,6 +262,8 @@ export default function ResultPage() {
   const [resultData, setResultData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [editedText, setEditedText] = useState("");
+  // 수정1: 추천 문구 👍👎 피드백 상태 { [index]: "up" | "down" | null }
+  const [feedbackMap, setFeedbackMap] = useState<Record<number, "up" | "down" | null>>({});
   // ★ 추가: violationMeta 상태 (Before/After 카드 하단 설명용)
   const [violationMeta, setViolationMeta] = useState<{
     legalBasis: string;
@@ -665,17 +667,26 @@ export default function ResultPage() {
                 </div>
               )}
 
-              {/* 판단 근거 행 */}
+              {/* 판단 근거 행 - 수정3: 개조식으로 표현 */}
               {reasoning && (
                 <div className="flex items-start gap-3 px-6 py-4">
                   <Info size={15} className="text-blue-400 shrink-0 mt-0.5" />
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                  <div className="flex flex-col gap-0.5 w-full">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
                       판단 근거
                     </span>
-                    <p className="text-sm text-gray-700 leading-relaxed">
-                      {reasoning}
-                    </p>
+                    <ul className="space-y-1.5">
+                      {reasoning
+                        .split(/(?<=[。.！!?？])\s*/)
+                        .map((s) => s.trim())
+                        .filter((s) => s.length > 4)
+                        .map((sentence, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm text-gray-700 leading-relaxed">
+                            <span className="shrink-0 mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-400" />
+                            {sentence}
+                          </li>
+                        ))}
+                    </ul>
                   </div>
                 </div>
               )}
@@ -715,23 +726,10 @@ export default function ResultPage() {
                   resultData.spellCheck.original.map(
                     (chunk: any, i: number) =>
                       chunk.isError ? (
-                        // ★ 수정사항2: 위반 단어 툴팁에 explanation 파싱 문장 표시
-                        <span
-                          key={i}
-                          className="relative inline-block group cursor-help"
-                        >
+                        // 수정2: 커서 기능(hover tooltip) 제거 - 하이라이트만 유지
+                        <span key={i} className="inline-block">
                           <span className="bg-red-100 text-red-600 font-extrabold not-italic px-1 py-0.5 rounded border-b-[3px] border-red-500 underline decoration-red-400 decoration-wavy underline-offset-2">
                             {chunk.text}
-                          </span>
-                          {/* 호버 툴팁: explanation에서 파싱한 문장 표시 */}
-                          <span className="absolute bottom-full left-0 mb-2 hidden group-hover:flex items-start gap-1.5 w-56 bg-gray-900 text-white text-xs px-3 py-2 rounded-xl shadow-2xl z-20 not-italic font-normal leading-relaxed whitespace-normal">
-                            <AlertCircle
-                              size={12}
-                              className="shrink-0 mt-0.5 text-red-400"
-                            />
-                            {chunk.violation?.explanation ||
-                              chunk.violation?.type ||
-                              "법적으로 금지된 표현입니다."}
                           </span>
                         </span>
                       ) : (
@@ -803,7 +801,7 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {/* 다른 AI 수정 제안 - 원본 유지 */}
+        {/* 다른 AI 수정 제안 - 원본 유지 + 수정1: 👍👎 피드백 추가 */}
         {resultData.suggestions.length > 0 && (
           <div className="mb-12 text-left">
             <h3 className="font-bold text-zinc-800 mb-6 flex items-center gap-2">
@@ -828,10 +826,44 @@ export default function ResultPage() {
                   <p className="mt-4 text-zinc-700 font-medium leading-relaxed group-hover:text-blue-700">
                     {item.text}
                   </p>
-                  <ChevronDown
-                    size={18}
-                    className="text-zinc-300 self-end mt-2"
-                  />
+                  {/* 수정1: 피드백 버튼 👍👎 */}
+                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+                    <span className="text-[11px] text-gray-400">이 문구가 도움이 됐나요?</span>
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFeedbackMap((prev) => ({
+                            ...prev,
+                            [index]: prev[index] === "up" ? null : "up",
+                          }));
+                        }}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
+                          feedbackMap[index] === "up"
+                            ? "bg-blue-500 text-white border-blue-500"
+                            : "bg-white text-gray-400 border-gray-200 hover:border-blue-300 hover:text-blue-500"
+                        }`}
+                      >
+                        👍
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFeedbackMap((prev) => ({
+                            ...prev,
+                            [index]: prev[index] === "down" ? null : "down",
+                          }));
+                        }}
+                        className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
+                          feedbackMap[index] === "down"
+                            ? "bg-red-400 text-white border-red-400"
+                            : "bg-white text-gray-400 border-gray-200 hover:border-red-300 hover:text-red-400"
+                        }`}
+                      >
+                        👎
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -853,6 +885,33 @@ export default function ResultPage() {
             <Scale size={18} /> 결과 보고서 저장 (PDF)
           </button>
         </footer>
+
+        {/* 수정4: Microsoft AI School 광고 배너 */}
+        <div className="mt-10 rounded-2xl overflow-hidden border border-blue-100 bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 p-px">
+          <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 rounded-2xl px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-white text-xl">🎓</span>
+              <div>
+                <p className="text-white font-black text-sm tracking-tight">
+                  MICROSOFT AI SCHOOL 11기 모집
+                </p>
+                <p className="text-blue-100 text-xs mt-0.5">
+                  Azure 기반 AI 엔지니어 육성 커리큘럼
+                </p>
+              </div>
+            </div>
+            <span className="shrink-0 bg-white text-blue-600 text-xs font-black px-4 py-2 rounded-full shadow">
+              자세히 보기 →
+            </span>
+          </div>
+        </div>
+
+        {/* 수정5: 책임 면책 문구 */}
+        <p className="mt-5 text-center text-[11px] text-gray-400 leading-relaxed">
+          본 서비스의 분석 결과는 AI 기반 참고용 정보이며, 법적 효력을 갖지 않습니다.
+          실제 광고 집행 전 반드시 전문가 또는 관련 기관의 검토를 받으시기 바랍니다.
+          광고청정기는 분석 결과로 인한 법적 책임을 지지 않습니다.
+        </p>
       </main>
     </div>
   );

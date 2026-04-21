@@ -294,9 +294,15 @@ export default function ResultPage() {
     const violations = backend.violations ?? [];
     const rewrites = backend.verified_rewrites ?? [];
     const explanation = backend.explanation ?? "";
+    const riskLevel = toRiskLevel(backend.final_verdict);
 
     // ★ 변경: explanation을 3번째 인자로 전달해 fallback 하이라이트 활성화
-    const originalChunks = buildOriginalChunks(copy, violations, explanation);
+    // ★ 수정사항1: 안전 단계(Low)면 청킹 자체를 빈 배열로 → Before 박스 비움
+    const originalChunks =
+      riskLevel === "Low"
+        ? []
+        : buildOriginalChunks(copy, violations, explanation);
+
     const safeRewrite =
       rewrites.find((r: any) => r.style === "safe") ?? rewrites[0];
 
@@ -316,6 +322,43 @@ export default function ResultPage() {
     ];
     const safeKws = candidates.filter((kw) => safeText.includes(kw));
 
+    // ★ 수정사항2: explanation에서 각 위반 구절별 설명 문장을 파싱해 매핑
+    // explanation 예: "...'바르는 보톡스'는 금지된 표현... '14일 만에 피부가 부활합니다'라는 표현은..."
+    // → { '바르는 보톡스': '바르는 보톡스'는 금지된 표현입니다...', '14일 만에...': '...' }
+    const phraseToTooltip: Record<string, string> = {};
+    if (riskLevel !== "Low") {
+      // 따옴표로 감싼 구절을 기준으로 문장을 분리해 tooltip 매핑
+      const sentences = explanation.split(/(?<=[。.！!?？])\s*|\n/);
+      for (const sentence of sentences) {
+        const matches = sentence.match(/['''""]([^''""\n]{1,40})['''""]/g) || [];
+        for (const m of matches) {
+          const phrase = m.replace(/^['''""]|['''"""]$/g, "").trim();
+          if (phrase && copy.includes(phrase)) {
+            // 해당 구절이 포함된 문장 전체를 tooltip으로 사용
+            phraseToTooltip[phrase] = sentence.trim();
+          }
+        }
+      }
+
+      // violations 배열에도 tooltip 보강 (백엔드가 직접 준 경우 우선)
+      for (const v of violations) {
+        const phrase = (v.phrase || v.violation_word || v.keyword || "").trim();
+        if (phrase && !phraseToTooltip[phrase] && v.explanation) {
+          phraseToTooltip[phrase] = v.explanation;
+        }
+      }
+
+      // originalChunks의 violation.explanation을 phraseToTooltip으로 보강
+      for (const chunk of originalChunks) {
+        if (chunk.isError && chunk.violation) {
+          const tooltipText = phraseToTooltip[chunk.text];
+          if (tooltipText) {
+            chunk.violation.explanation = tooltipText;
+          }
+        }
+      }
+    }
+
     setViolationMeta({
       legalBasis: `과대광고: 의학적 효능 표방 및 절대적 표현 사용 금지 (${legalBasis})`,
       safeKeywordsUsed:
@@ -323,7 +366,7 @@ export default function ResultPage() {
     });
 
     setResultData({
-      riskLevel: toRiskLevel(backend.final_verdict),
+      riskLevel,
       explanation,
       spellCheck: { original: originalChunks },
       violations,
@@ -512,13 +555,18 @@ export default function ResultPage() {
             {/* 텍스트 박스 */}
             <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-red-100 flex-1">
               <p className="text-base leading-[2] italic">
-                {resultData.spellCheck.original.length === 0 ? (
+                {/* ★ 수정사항1: 안전 단계면 박스 비움 */}
+                {resultData.riskLevel === "Low" ? (
+                  <span className="text-gray-300 not-italic text-sm">
+                    위반 문구가 발견되지 않았습니다.
+                  </span>
+                ) : resultData.spellCheck.original.length === 0 ? (
                   <span className="text-gray-300">원본 텍스트 없음</span>
                 ) : (
                   resultData.spellCheck.original.map(
                     (chunk: any, i: number) =>
                       chunk.isError ? (
-                        // ★ 위반 단어: 연한 빨강 배경 + 진한 빨강 텍스트 + 물결 밑줄
+                        // ★ 수정사항2: 위반 단어 툴팁에 explanation 파싱 문장 표시
                         <span
                           key={i}
                           className="relative inline-block group cursor-help"
@@ -526,8 +574,8 @@ export default function ResultPage() {
                           <span className="bg-red-100 text-red-600 font-extrabold not-italic px-1 py-0.5 rounded border-b-[3px] border-red-500 underline decoration-red-400 decoration-wavy underline-offset-2">
                             {chunk.text}
                           </span>
-                          {/* 호버 툴팁 */}
-                          <span className="absolute bottom-full left-0 mb-2 hidden group-hover:flex items-start gap-1.5 w-max max-w-[240px] bg-gray-900 text-white text-xs px-3 py-2 rounded-xl shadow-2xl z-20 not-italic font-normal leading-relaxed">
+                          {/* 호버 툴팁: explanation에서 파싱한 문장 표시 */}
+                          <span className="absolute bottom-full left-0 mb-2 hidden group-hover:flex items-start gap-1.5 w-56 bg-gray-900 text-white text-xs px-3 py-2 rounded-xl shadow-2xl z-20 not-italic font-normal leading-relaxed whitespace-normal">
                             <AlertCircle
                               size={12}
                               className="shrink-0 mt-0.5 text-red-400"
@@ -548,10 +596,12 @@ export default function ResultPage() {
               </p>
             </div>
 
-            {/* 하단 법적 근거 */}
-            <p className="mt-4 text-xs text-red-500 font-medium leading-relaxed">
-              * {violationMeta.legalBasis}
-            </p>
+            {/* ★ 수정사항1: 안전 단계면 하단 텍스트 숨김 */}
+            {resultData.riskLevel !== "Low" && (
+              <p className="mt-4 text-xs text-red-500 font-medium leading-relaxed">
+                * {violationMeta.legalBasis}
+              </p>
+            )}
           </div>
 
           {/* AFTER 카드 */}
@@ -589,11 +639,18 @@ export default function ResultPage() {
               </p>
             </div>
 
-            {/* 하단 권장 표현 */}
-            <p className="mt-4 text-xs text-blue-500 font-medium leading-relaxed">
-              ✓ 권장 표현:{" "}
-              {violationMeta.safeKeywordsUsed.join(", ")} 등의 표현 사용
-            </p>
+            {/* ★ 수정사항1: 안전 단계면 안전 메시지, 위험/주의면 기존 권장 표현 */}
+            {resultData.riskLevel === "Low" ? (
+              <p className="mt-4 text-xs text-green-600 font-medium leading-relaxed flex items-center gap-1">
+                <CheckCircle2 size={12} className="shrink-0" />
+                금지 조항이나 유사 사례가 발견되지 않았습니다.
+              </p>
+            ) : (
+              <p className="mt-4 text-xs text-blue-500 font-medium leading-relaxed">
+                ✓ 권장 표현:{" "}
+                {violationMeta.safeKeywordsUsed.join(", ")} 등의 표현 사용
+              </p>
+            )}
           </div>
         </div>
 

@@ -549,8 +549,9 @@ export default function UploadPage() {
                   </div>
                   <p className="text-xs text-gray-500 leading-relaxed">
                     <span className="text-blue-500 font-semibold">[필수]</span>{" "}
-                    분석에 사용된 데이터는 서비스 종료 시 즉시 파기되며, AI
-                    학습용으로 활용되지 않음에 동의합니다.
+                    입력하신 광고 문구는 분석 목적으로만 사용되며, AI
+                    14일 내에 파기됩니다. 수정안에 대한 👍👎 피드백은
+                    서비스 품질 개선에 활용될 수 있습니다.
                   </p>
                 </label>
 

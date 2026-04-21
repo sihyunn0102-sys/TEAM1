@@ -10,6 +10,7 @@ import {
   Scale,
   CheckCircle2,
   ChevronDown,
+  AlertTriangle,
 } from "lucide-react";
 
 // --- 백엔드 연동용 유틸리티 ---
@@ -28,7 +29,6 @@ function toRiskLevel(verdict: string) {
 
 function buildOriginalChunks(copy: string, violations: any[]) {
   if (!copy) return [];
-  // 위반 정보를 청크에 담도록 타입 확장
   let chunks: { text: string; isError: boolean; violation?: any }[] = [
     { text: copy, isError: false },
   ];
@@ -55,7 +55,6 @@ function buildOriginalChunks(copy: string, violations: any[]) {
       }
       if (idx > 0)
         next.push({ text: chunk.text.slice(0, idx), isError: false });
-      // 에러 텍스트에 violation(에러 이유) 데이터 저장
       next.push({ text: phrase, isError: true, violation: v });
       if (idx + phrase.length < chunk.text.length) {
         next.push({
@@ -63,6 +62,49 @@ function buildOriginalChunks(copy: string, violations: any[]) {
           isError: false,
         });
       }
+    }
+    chunks = next;
+  }
+  return chunks;
+}
+
+// 수정안에서 변경된 단어 하이라이트용
+function buildAfterChunks(afterText: string, violations: any[]) {
+  if (!afterText) return [{ text: afterText, isNew: false }];
+  // violations의 phrase를 기반으로 유사 단어를 찾아 하이라이트
+  // 간단하게: safe 키워드(개선, 관리, 도움, 효과적, 완화 등)를 파란색으로 표시
+  const safeKeywords = [
+    "개선에 도움",
+    "효과적으로 관리",
+    "효과적",
+    "관리",
+    "개선",
+    "완화",
+    "도움",
+    "케어",
+    "촉촉",
+    "진정",
+  ];
+  let chunks: { text: string; isNew: boolean }[] = [
+    { text: afterText, isNew: false },
+  ];
+
+  for (const kw of safeKeywords) {
+    const next: { text: string; isNew: boolean }[] = [];
+    for (const chunk of chunks) {
+      if (chunk.isNew) {
+        next.push(chunk);
+        continue;
+      }
+      const idx = chunk.text.indexOf(kw);
+      if (idx === -1) {
+        next.push(chunk);
+        continue;
+      }
+      if (idx > 0) next.push({ text: chunk.text.slice(0, idx), isNew: false });
+      next.push({ text: kw, isNew: true });
+      if (idx + kw.length < chunk.text.length)
+        next.push({ text: chunk.text.slice(idx + kw.length), isNew: false });
     }
     chunks = next;
   }
@@ -122,6 +164,10 @@ export default function ResultPage() {
   const [resultData, setResultData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [editedText, setEditedText] = useState("");
+  const [violationMeta, setViolationMeta] = useState<{
+    legalBasis: string;
+    safeKeywordsUsed: string[];
+  }>({ legalBasis: "", safeKeywordsUsed: [] });
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -217,10 +263,33 @@ export default function ResultPage() {
 
     if (safeRewrite) setEditedText(safeRewrite.text);
 
+    // 법적 근거 추출
+    const legalBasis =
+      violations[0]?.legal_basis ||
+      violations[0]?.law ||
+      backend.legal_basis ||
+      "화장품법 제13조 위반";
+
+    // 안전 키워드 추출 (수정안에서)
+    const safeKws = safeRewrite
+      ? ["개선에 도움", "효과적으로 관리", "관리"].filter((kw) =>
+          safeRewrite.text?.includes(kw),
+        )
+      : ["개선에 도움", "관리", "완화"];
+
+    setViolationMeta({
+      legalBasis: `과대광고: 의학적 효능 표방 및 절대적 표현 사용 금지 (${legalBasis})`,
+      safeKeywordsUsed:
+        safeKws.length > 0
+          ? safeKws
+          : ["개선에 도움", "관리", "완화 등의 표현 사용"],
+    });
+
     setResultData({
       riskLevel: toRiskLevel(backend.final_verdict),
       explanation: backend.explanation ?? "",
       spellCheck: { original: originalChunks },
+      violations,
       suggestions: rewrites.map((r: any, i: number) => ({
         id: i + 1,
         text: r.text,
@@ -344,6 +413,11 @@ export default function ResultPage() {
     label: "분석 불가",
   };
 
+  const afterChunks = buildAfterChunks(
+    editedText,
+    resultData.violations || [],
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-6">
       <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-sm border border-gray-100 p-8 md:p-14 relative overflow-hidden">
@@ -370,61 +444,103 @@ export default function ResultPage() {
           </p>
         </div>
 
-        {/* Before/After 2열 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 text-left">
-          {/* Before */}
-          <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 relative">
-            <span className="text-[10px] text-gray-400 font-bold bg-gray-200 px-2 py-0.5 rounded-sm mb-2 block w-fit">
-              AD
+        {/* ── Before / After 2열 카드 ── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12 text-left items-stretch">
+
+          {/* ── BEFORE 카드 ── */}
+          <div className="relative bg-red-50 rounded-3xl p-7 border border-red-100 flex flex-col">
+            {/* 우상단 뱃지 */}
+            <span className="absolute top-5 right-5 bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">
+              수정 전 (위반 사례)
             </span>
-            <div className="bg-red-500 text-white rounded-full px-4 py-1.5 w-fit mb-6 text-sm font-bold">
-              수정 전 위반 문구
+
+            {/* 헤더 */}
+            <div className="flex items-center gap-2 mb-5 mt-1">
+              <AlertCircle size={18} className="text-red-500" />
+              <h3 className="text-base font-extrabold text-red-600">
+                위반 의심 문구
+              </h3>
             </div>
-            <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-600 pr-2 pt-8">
-              {resultData.spellCheck.original.map((chunk: any, i: number) =>
-                chunk.isError ? (
-                  <span
-                    key={i}
-                    className="relative inline-block mx-1 group cursor-help mt-4"
-                  >
-                    {/* 위반 타입 라벨 */}
-                    <span className="absolute -top-6 left-0 bg-red-100 text-red-600 border border-red-200 text-[10px] font-black px-2 py-0.5 rounded shadow-sm whitespace-nowrap z-10 flex items-center gap-1">
-                      <AlertCircle size={10} />
-                      {chunk.violation?.type || "금지어/주의어"}
-                    </span>
-                    {/* 빨간색 물결 밑줄 */}
-                    <span className="text-red-600 font-extrabold underline decoration-red-500 decoration-wavy decoration-2 underline-offset-4">
-                      {chunk.text}
-                    </span>
-                    {/* 호버 시 뜨는 상세 설명 */}
-                    <span className="absolute bottom-full left-0 mb-8 hidden group-hover:block w-max max-w-xs bg-gray-800 text-white text-xs px-3 py-2 rounded-lg shadow-xl z-20">
-                      {chunk.violation?.explanation ||
-                        "수정이 필요한 문구입니다."}
-                    </span>
-                  </span>
-                ) : (
-                  <span key={i}>{chunk.text}</span>
-                ),
-              )}
+
+            {/* 텍스트 박스 */}
+            <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-red-100 min-h-[96px] flex-1 flex items-start">
+              <p className="text-base leading-relaxed text-gray-500 italic">
+                {resultData.spellCheck.original.map(
+                  (chunk: any, i: number) =>
+                    chunk.isError ? (
+                      <span
+                        key={i}
+                        className="relative inline-block group cursor-help mx-0.5"
+                      >
+                        {/* 위반 단어 하이라이트 */}
+                        <span className="bg-red-500 text-white font-black px-1.5 py-0.5 rounded underline decoration-red-300 decoration-wavy underline-offset-2 not-italic">
+                          {chunk.text}
+                        </span>
+                        {/* 호버 툴팁 */}
+                        <span className="absolute bottom-full left-0 mb-2 hidden group-hover:block w-max max-w-[200px] bg-gray-800 text-white text-xs px-3 py-2 rounded-lg shadow-xl z-20 not-italic font-normal">
+                          {chunk.violation?.explanation ||
+                            "수정이 필요한 문구입니다."}
+                        </span>
+                      </span>
+                    ) : (
+                      <span key={i} className="text-slate-400">
+                        {chunk.text}
+                      </span>
+                    ),
+                )}
+              </p>
             </div>
+
+            {/* 하단 법적 근거 */}
+            <p className="mt-4 text-xs text-red-500 font-medium leading-relaxed">
+              * {violationMeta.legalBasis}
+            </p>
           </div>
 
-          {/* After */}
-          <div className="bg-blue-50/30 rounded-[32px] p-8 relative border border-blue-100">
-            <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 tracking-widest uppercase">
-              After
+          {/* ── AFTER 카드 ── */}
+          <div className="relative bg-blue-50 rounded-3xl p-7 border border-blue-100 flex flex-col">
+            {/* 우상단 뱃지 */}
+            <span className="absolute top-5 right-5 bg-blue-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">
+              광고청정기 제안
+            </span>
+
+            {/* 헤더 */}
+            <div className="flex items-center gap-2 mb-5 mt-1">
+              <CheckCircle2 size={18} className="text-blue-500" />
+              <h3 className="text-base font-extrabold text-blue-600">
+                안전한 수정안
+              </h3>
             </div>
-            <div className="bg-blue-600 text-white rounded-full px-4 py-1.5 w-fit mb-6 text-sm font-bold">
-              AI 정화 완료
+
+            {/* 텍스트 박스 */}
+            <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-blue-100 min-h-[96px] flex-1 flex items-start">
+              <p className="text-base leading-relaxed text-gray-500 italic">
+                {afterChunks.map((chunk, i) =>
+                  chunk.isNew ? (
+                    <span
+                      key={i}
+                      className="text-blue-600 font-black not-italic"
+                    >
+                      {chunk.text}
+                    </span>
+                  ) : (
+                    <span key={i} className="text-slate-400">
+                      {chunk.text}
+                    </span>
+                  ),
+                )}
+              </p>
             </div>
-            <textarea
-              readOnly
-              value={editedText}
-              className="w-full h-48 bg-white text-zinc-800 px-4 py-3 rounded-xl font-bold shadow-sm resize-none outline-none leading-relaxed text-lg pr-2 border border-blue-50"
-            />
+
+            {/* 하단 권장 표현 안내 */}
+            <p className="mt-4 text-xs text-blue-500 font-medium leading-relaxed">
+              ✓ 권장 표현:{" "}
+              {violationMeta.safeKeywordsUsed.join(", ")} 등의 표현 사용
+            </p>
           </div>
         </div>
 
+        {/* ── 다른 AI 수정 제안 ── */}
         {resultData.suggestions.length > 0 && (
           <div className="mb-12 text-left">
             <h3 className="font-bold text-zinc-800 mb-6 flex items-center gap-2">

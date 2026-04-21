@@ -769,19 +769,21 @@ export default function ResultPage() {
             {/* 텍스트 박스 */}
             <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-blue-100 flex-1">
               <p className="text-base leading-[2] italic">
-                {afterChunks.map((chunk, i) =>
-                  chunk.isNew ? (
-                    <span
-                      key={i}
-                      className="text-blue-600 font-extrabold not-italic"
-                    >
-                      {chunk.text}
-                    </span>
-                  ) : (
-                    <span key={i} className="text-slate-400">
-                      {chunk.text}
-                    </span>
-                  ),
+                {/* 수정2: 안전 단계면 원본 텍스트 그대로 표시 (하이라이트 없이) */}
+                {resultData.riskLevel === "Low" ? (
+                  <span className="text-slate-600 not-italic">{editedText}</span>
+                ) : (
+                  afterChunks.map((chunk, i) =>
+                    chunk.isNew ? (
+                      <span key={i} className="text-blue-600 font-extrabold not-italic">
+                        {chunk.text}
+                      </span>
+                    ) : (
+                      <span key={i} className="text-slate-400">
+                        {chunk.text}
+                      </span>
+                    ),
+                  )
                 )}
               </p>
             </div>
@@ -886,25 +888,41 @@ export default function ResultPage() {
           </button>
         </footer>
 
-        {/* 수정4: Microsoft AI School 광고 배너 */}
-        <div className="mt-10 rounded-2xl overflow-hidden border border-blue-100 bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 p-px">
-          <div className="bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 rounded-2xl px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <span className="text-white text-xl">🎓</span>
-              <div>
-                <p className="text-white font-black text-sm tracking-tight">
-                  MICROSOFT AI SCHOOL 11기 모집
+        {/* 수정4: Microsoft AI School 광고 배너 - 검정 배경, URL 링크 */}
+        <a
+          href="https://ms-academy.kr/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-10 block rounded-2xl overflow-hidden border border-gray-800 hover:opacity-90 transition-opacity"
+        >
+          <div className="bg-gray-950 rounded-2xl px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex items-start gap-4">
+              {/* 태그들 */}
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-[10px] font-bold border border-gray-500 text-gray-300 px-2.5 py-0.5 rounded-full">
+                    #Azure Machine Learning
+                  </span>
+                  <span className="text-[10px] font-bold border border-gray-500 text-gray-300 px-2.5 py-0.5 rounded-full">
+                    Azure OpenAI
+                  </span>
+                  <span className="text-[10px] font-bold border border-gray-500 text-gray-300 px-2.5 py-0.5 rounded-full">
+                    #Azure AI Foundry
+                  </span>
+                </div>
+                <p className="text-white font-black text-base tracking-tight">
+                  Microsoft AI School
                 </p>
-                <p className="text-blue-100 text-xs mt-0.5">
-                  Azure 기반 AI 엔지니어 육성 커리큘럼
+                <p className="text-gray-300 text-xs">
+                  Microsoft가 제공하는 AI 엔지니어 육성 커리큘럼
                 </p>
               </div>
             </div>
-            <span className="shrink-0 bg-white text-blue-600 text-xs font-black px-4 py-2 rounded-full shadow">
+            <span className="shrink-0 bg-white text-gray-900 text-xs font-black px-4 py-2 rounded-full shadow hover:bg-gray-100 transition-colors">
               자세히 보기 →
             </span>
           </div>
-        </div>
+        </a>
 
         {/* 수정5: 책임 면책 문구 */}
         <p className="mt-5 text-center text-[11px] text-gray-400 leading-relaxed">

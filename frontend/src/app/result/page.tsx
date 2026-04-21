@@ -10,6 +10,12 @@ import {
   Scale,
   CheckCircle2,
   ChevronDown,
+  BookOpen,
+  FileText,
+  LayoutDashboard,
+  ShieldAlert,
+  Copy,
+  ChevronRight
 } from "lucide-react";
 
 // --- 백엔드 연동용 유틸리티 ---
@@ -28,7 +34,6 @@ function toRiskLevel(verdict: string) {
 
 function buildOriginalChunks(copy: string, violations: any[]) {
   if (!copy) return [];
-  // 위반 정보를 청크에 담도록 타입 확장
   let chunks: { text: string; isError: boolean; violation?: any }[] = [
     { text: copy, isError: false },
   ];
@@ -55,7 +60,6 @@ function buildOriginalChunks(copy: string, violations: any[]) {
       }
       if (idx > 0)
         next.push({ text: chunk.text.slice(0, idx), isError: false });
-      // 에러 텍스트에 violation(에러 이유) 데이터 저장
       next.push({ text: phrase, isError: true, violation: v });
       if (idx + phrase.length < chunk.text.length) {
         next.push({
@@ -188,6 +192,8 @@ export default function ResultPage() {
     setResultData({
       riskLevel: toRiskLevel(backend.final_verdict),
       explanation: backend.explanation ?? "",
+      violations: violations, // 상세 테이블용 추가
+      legalGrounds: backend.retrieved_docs ?? [], // L2 결과 추가
       spellCheck: { original: originalChunks },
       suggestions: rewrites.map((r: any, i: number) => ({
         id: i + 1,
@@ -222,7 +228,7 @@ export default function ResultPage() {
     }
   };
 
-  // 💡 여기서부터
+  // --- 원본 로딩 로직 복구 ---
   if (isLoading) {
     return (
       <div className="flex flex-col items-center min-h-screen bg-white font-sans overflow-hidden pt-20 pb-10">
@@ -318,10 +324,10 @@ export default function ResultPage() {
     label: "분석 불가",
   };
 
-  // 💡 여기서부터 return 다음에 괄호 `(`가 정상적으로 열려 있습니다.
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-6">
       <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-sm border border-gray-100 p-8 md:p-14 relative overflow-hidden">
+        {/* 상단 타이틀 섹션 */}
         <div className="flex justify-between items-end mb-10 mt-6">
           <div>
             <span className="text-blue-600 font-bold text-xs tracking-widest uppercase mb-2 block">
@@ -334,79 +340,124 @@ export default function ResultPage() {
           <div
             className={`${riskBadge.bg} ${riskBadge.text} px-5 py-2 rounded-full font-bold border flex items-center gap-2`}
           >
-            <CheckCircle2 size={16} /> {riskBadge.label}
+            <ShieldAlert size={16} /> {riskBadge.label}
           </div>
         </div>
 
+        {/* 종합 판정 섹션 */}
         <div className="mb-10 p-6 bg-blue-50/30 rounded-3xl border flex gap-3 text-left">
           <Info size={18} className="text-blue-500 shrink-0 mt-1" />
-          <p className="text-sm text-gray-700 leading-relaxed">
-            {resultData.explanation}
-          </p>
+          <div>
+            <h4 className="font-bold text-blue-900 mb-1 text-sm">종합 분석 의견</h4>
+            <p className="text-sm text-gray-700 leading-relaxed">
+              {resultData.explanation}
+            </p>
+          </div>
         </div>
 
-        {/* 🛠️ 정돈된 Before/After 섹션 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 text-left">
-          {/* 🔴 Before: 빨간색 취소선 및 툴팁 */}
-          <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 relative">
-            <span className="text-[10px] text-gray-400 font-bold bg-gray-200 px-2 py-0.5 rounded-sm mb-2 block w-fit">
-              AD
-            </span>
-            <div className="bg-red-500 text-white rounded-full px-4 py-1.5 w-fit mb-6 text-sm font-bold">
-              수정 전 위반 문구
-            </div>
-            <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-600 pr-2 pt-8">
+        {/* 1. 원본 문구 위반 체크 (하이라이트 버전) */}
+        <div className="mb-12">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
+            <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-md">Step 1</span> 원본 문구 위반 하이라이트
+          </h3>
+          <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 text-left relative min-h-[160px]">
+            <div className="leading-relaxed text-lg text-zinc-600">
               {resultData.spellCheck.original.map((chunk: any, i: number) =>
                 chunk.isError ? (
                   <span
                     key={i}
-                    className="relative inline-block mx-1 group cursor-help mt-4"
+                    className="relative inline-block mx-1 group cursor-help"
                   >
-                    {/* 위반 타입 라벨 */}
-                    <span className="absolute -top-6 left-0 bg-red-100 text-red-600 border border-red-200 text-[10px] font-black px-2 py-0.5 rounded shadow-sm whitespace-nowrap z-10 flex items-center gap-1">
-                      <AlertCircle size={10} />
-                      {chunk.violation?.type || "금지어/주의어"}
-                    </span>
-                    {/* 연한 빨간색 배경 하이라이트 + 텍스트 붉은색 + 살짝 둥근 모서리 */}
                     <span className="text-red-600 font-extrabold bg-red-100 px-1.5 py-0.5 rounded-md underline decoration-red-500 underline-offset-4">
                       {chunk.text}
                     </span>
-                    {/* 호버 시 뜨는 상세 설명 */}
-                    <span className="absolute bottom-full left-0 mb-8 hidden group-hover:block w-max max-w-xs bg-gray-800 text-white text-xs px-3 py-2 rounded-lg shadow-xl z-20">
-                      {chunk.violation?.explanation ||
-                        "수정이 필요한 문구입니다."}
+                    {/* 호버 시 뜨는 상세 설명 (원래 코드 기능 유지) */}
+                    <span className="absolute bottom-full left-0 mb-4 hidden group-hover:block w-max max-w-xs bg-gray-800 text-white text-[10px] px-3 py-2 rounded-lg shadow-xl z-20">
+                      {chunk.violation?.explanation || "수정이 필요한 문구입니다."}
                     </span>
                   </span>
                 ) : (
                   <span key={i}>{chunk.text}</span>
-                ),
+                )
               )}
             </div>
           </div>
+        </div>
 
-          {/* 🔵 After: 흰색 배경 테마 */}
-          <div className="bg-blue-50/30 rounded-[32px] p-8 relative border border-blue-100">
-            <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 tracking-widest uppercase">
-              After
-            </div>
+        {/* 2. 위반 상세 내역 테이블 (두 번째 사진의 요청 기능) */}
+        <div className="mb-12">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
+            <AlertCircle className="text-red-500" size={24} /> 위반 상세 내역
+          </h3>
+          <div className="overflow-hidden border border-gray-200 rounded-2xl">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 w-1/4">위반 문구</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 w-1/4">위반 유형</th>
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500">상세 이유 및 가이드</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {resultData.violations.map((v: any, idx: number) => (
+                  <tr key={idx} className="hover:bg-red-50/30 transition-colors">
+                    <td className="px-6 py-4 text-sm font-bold text-red-600">{v.phrase || v.violation_word}</td>
+                    <td className="px-6 py-4 text-xs font-medium text-gray-600">
+                      <span className="bg-gray-100 px-2 py-1 rounded">{v.type || "표현 부적합"}</span>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-gray-500 leading-relaxed">{v.explanation}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* 3. 법적 근거 섹션 (두 번째 사진의 요청 기능) */}
+        <div className="mb-12">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
+            <BookOpen className="text-blue-600" size={24} /> 관련 법령 및 근거 (L2 Retriever)
+          </h3>
+          <div className="grid grid-cols-1 gap-4 text-left">
+            {resultData.legalGrounds.length > 0 ? (
+              resultData.legalGrounds.map((doc: any, idx: number) => (
+                <div key={idx} className="p-5 bg-blue-50/50 border border-blue-100 rounded-2xl flex gap-4">
+                  <FileText className="text-blue-400 shrink-0" size={20} />
+                  <div>
+                    <div className="font-bold text-blue-900 text-sm mb-1">{doc.title || "화장품 광고 가이드라인"}</div>
+                    <div className="text-xs text-gray-600 leading-relaxed">{doc.content}</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-gray-400 italic px-2">참조된 법적 근거가 없습니다.</p>
+            )}
+          </div>
+        </div>
+
+        {/* 4. 수정 제안 (After 섹션) */}
+        <div className="mb-12">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
+            <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-md">Step 2</span> AI 정화 완료 카피
+          </h3>
+          <div className="bg-blue-50/30 rounded-[32px] p-8 relative border border-blue-100 text-left">
             <div className="bg-blue-600 text-white rounded-full px-4 py-1.5 w-fit mb-6 text-sm font-bold">
-              AI 정화 완료
+              추천 최종안
             </div>
             <textarea
               readOnly
               value={editedText}
-              className="w-full h-48 bg-white text-zinc-800 px-4 py-3 rounded-xl font-bold shadow-sm resize-none outline-none leading-relaxed text-lg pr-2 border border-blue-50"
+              className="w-full h-32 bg-white text-zinc-800 px-6 py-5 rounded-2xl font-bold shadow-sm resize-none outline-none leading-relaxed text-xl border border-blue-100"
             />
           </div>
         </div>
 
+        {/* 다른 추천 제안들 */}
         {resultData.suggestions.length > 0 && (
           <div className="mb-12 text-left">
             <h3 className="font-bold text-zinc-800 mb-6 flex items-center gap-2">
-              ✨ 다른 AI 교정 제안 둘러보기{" "}
-              <span className="text-sm font-normal text-zinc-400">
-                (클릭 시 복사 및 적용)
-              </span>
+              ✨ 스타일별 AI 교정 제안
+              <span className="text-sm font-normal text-zinc-400"> (클릭 시 복사) </span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {resultData.suggestions.map((item: any, index: number) => (
@@ -415,19 +466,22 @@ export default function ResultPage() {
                   onClick={() => {
                     navigator.clipboard.writeText(item.text);
                     setEditedText(item.text);
+                    alert("선택한 문구가 적용 및 복사되었습니다.");
                   }}
                   className="p-6 bg-white border rounded-[28px] hover:border-blue-200 hover:shadow-lg transition-all cursor-pointer flex flex-col justify-between h-full group"
                 >
-                  <span className="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-md">
-                    {item.tag} 추천 문구 {index + 1}
-                  </span>
-                  <p className="mt-4 text-zinc-700 font-medium leading-relaxed group-hover:text-blue-700">
-                    {item.text}
-                  </p>
-                  <ChevronDown
-                    size={18}
-                    className="text-zinc-300 self-end mt-2"
-                  />
+                  <div>
+                    <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded uppercase tracking-wider mb-3 block w-fit">
+                      {item.tag}
+                    </span>
+                    <p className="text-sm text-zinc-700 font-bold leading-relaxed group-hover:text-blue-700">
+                      {item.text}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-end mt-4 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[10px] font-bold mr-1">Apply</span>
+                    <ChevronRight size={14} />
+                  </div>
                 </div>
               ))}
             </div>

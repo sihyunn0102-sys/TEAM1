@@ -7,24 +7,23 @@ import {
   Info,
   ArrowLeft,
   Scale,
-  CheckCircle2,
-  ChevronDown,
   BookOpen,
   FileText,
-  LayoutDashboard,
   ShieldAlert,
-  Copy,
-  ChevronRight,
-  ArrowRight
+  ChevronRight
 } from "lucide-react";
 
 // --- 백엔드 연동용 유틸리티 ---
 function toRiskLevel(verdict: string) {
   switch (verdict) {
-    case "hard_block": return "High";
-    case "caution": return "Medium";
-    case "safe": return "Low";
-    default: return "N/A";
+    case "hard_block":
+      return "High";
+    case "caution":
+      return "Medium";
+    case "safe":
+      return "Low";
+    default:
+      return "N/A";
   }
 }
 
@@ -35,7 +34,12 @@ function buildOriginalChunks(copy: string, violations: any[]) {
   ];
 
   for (const v of violations) {
-    const phrase: string = (v.phrase || v.violation_word || v.keyword || "").trim();
+    const phrase: string = (
+      v.phrase ||
+      v.violation_word ||
+      v.keyword ||
+      ""
+    ).trim();
     if (!phrase) continue;
     const next: { text: string; isError: boolean; violation?: any }[] = [];
 
@@ -49,10 +53,14 @@ function buildOriginalChunks(copy: string, violations: any[]) {
         next.push(chunk);
         continue;
       }
-      if (idx > 0) next.push({ text: chunk.text.slice(0, idx), isError: false });
+      if (idx > 0)
+        next.push({ text: chunk.text.slice(0, idx), isError: false });
       next.push({ text: phrase, isError: true, violation: v });
       if (idx + phrase.length < chunk.text.length) {
-        next.push({ text: chunk.text.slice(idx + phrase.length), isError: false });
+        next.push({
+          text: chunk.text.slice(idx + phrase.length),
+          isError: false,
+        });
       }
     }
     chunks = next;
@@ -67,14 +75,45 @@ const STYLE_LABELS: Record<string, string> = {
 };
 
 const analysisPhases = [
-  { title: "L1", label: "Rule Engine", desc: "금지어 식별", detail: "블랙리스트 기반 점검" },
-  { title: "L2", label: "Retriever", desc: "법적 근거", detail: "가이드라인 참조" },
-  { title: "L3", label: "Judge", desc: "종합 판정", detail: "GPT-4o 심층 분석" },
-  { title: "L4", label: "Rewriter", desc: "수정 제안", detail: "대안 카피 생성" },
-  { title: "L5", label: "Re-Judge", desc: "최종 검증", detail: "교차 검증 수행" },
+  {
+    title: "L1",
+    label: "Rule Engine",
+    desc: "금지어 즉시 식별",
+    detail: "블랙리스트 기반 점검",
+  },
+  {
+    title: "L2",
+    label: "Retriever",
+    desc: "법적 근거 검색",
+    detail: "화장품법 및 가이드라인 참조",
+  },
+  {
+    title: "L3",
+    label: "Judge",
+    desc: "종합 판정",
+    detail: "GPT-4o 엔진 기반 심층 분석",
+  },
+  {
+    title: "L4",
+    label: "Rewriter",
+    desc: "수정 제안 생성",
+    detail: "대안 카피 생성",
+  },
+  {
+    title: "L5",
+    label: "Re-Judge",
+    desc: "최종 검증",
+    detail: "수정안 교차 검증",
+  },
 ];
 
-const stepToIndex: Record<string, number> = { L1: 0, L2: 1, L3: 2, L4: 3, L5: 4 };
+const stepToIndex: Record<string, number> = {
+  L1: 0,
+  L2: 1,
+  L3: 2,
+  L4: 3,
+  L5: 4,
+};
 
 export default function ResultPage() {
   const [isLoading, setIsLoading] = useState(true);
@@ -86,13 +125,14 @@ export default function ResultPage() {
 
   useEffect(() => {
     const text = sessionStorage.getItem("analyzeText");
-    const productType = sessionStorage.getItem("analyzeProductType") || "general_cosmetic";
+    const productType =
+      sessionStorage.getItem("analyzeProductType") || "general_cosmetic";
 
     if (!text) {
       try {
         const raw = localStorage.getItem("adguard_result");
         if (!raw) {
-          setError("데이터가 없습니다.");
+          setError("데이터가 없습니다. 분석을 먼저 진행해주세요.");
           setIsLoading(false);
           return;
         }
@@ -105,7 +145,14 @@ export default function ResultPage() {
       return;
     }
 
-    const params = new URLSearchParams({ text, product_type: productType });
+    // 브라우저 고유 user_id (없으면 생성)
+    let user_id = localStorage.getItem("adguard_user_id") || "";
+    if (!user_id) {
+      user_id = crypto.randomUUID();
+      localStorage.setItem("adguard_user_id", user_id);
+    }
+
+    const params = new URLSearchParams({ text, product_type: productType, user_id });
     const es = new EventSource(`/api/analyze-stream?${params.toString()}`);
     esRef.current = es;
 
@@ -118,6 +165,22 @@ export default function ResultPage() {
     es.addEventListener("result", (e: any) => {
       const data = JSON.parse(e.data);
       localStorage.setItem("adguard_result", JSON.stringify(data));
+
+      // 히스토리 누적 저장
+      try {
+        const prev = JSON.parse(localStorage.getItem("adguard_history") || "[]");
+        const entry = {
+          task_id: data.task_id || crypto.randomUUID(),
+          verdict: data.final_verdict || "",
+          risk_summary: data.explanation || "",
+          timestamp: new Date().toISOString(),
+          text_preview: (data.copy || data.ad_copy || "").slice(0, 200),
+          verified_rewrites: data.verified_rewrites || [],
+        };
+        prev.unshift(entry);
+        localStorage.setItem("adguard_history", JSON.stringify(prev.slice(0, 100)));
+      } catch {}
+
       sessionStorage.removeItem("analyzeText");
       sessionStorage.removeItem("analyzeProductType");
       processResult(data);
@@ -126,7 +189,7 @@ export default function ResultPage() {
     });
 
     es.addEventListener("error", () => {
-      setError("서버 연결에 실패했습니다.");
+      setError("서버 연결에 실패했습니다. 배포 서버를 확인해주세요.");
       setIsLoading(false);
       es.close();
     });
@@ -139,7 +202,8 @@ export default function ResultPage() {
     const violations = backend.violations ?? [];
     const rewrites = backend.verified_rewrites ?? [];
     const originalChunks = buildOriginalChunks(copy, violations);
-    const safeRewrite = rewrites.find((r: any) => r.style === "safe") ?? rewrites[0];
+    const safeRewrite =
+      rewrites.find((r: any) => r.style === "safe") ?? rewrites[0];
 
     if (safeRewrite) setEditedText(safeRewrite.text);
 
@@ -158,7 +222,8 @@ export default function ResultPage() {
   }
 
   const handleDownloadPDF = async () => {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8080";
+    const backendUrl =
+      process.env.NEXT_PUBLIC_BACKEND_URL || "http://127.0.0.1:8080";
     try {
       const raw = localStorage.getItem("adguard_result");
       const body = raw ? JSON.parse(raw) : {};
@@ -171,181 +236,287 @@ export default function ResultPage() {
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = `adguard_report.pdf`;
-      document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    } catch (e) { alert("다운로드 오류"); }
+      a.href = url;
+      a.download = `adguard_report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (e) {
+      alert("다운로드 오류");
+    }
   };
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center min-h-screen bg-white pt-24">
-        <div className="relative w-48 h-48 mb-16 flex items-center justify-center">
-            <div className="absolute w-full h-full bg-blue-100 rounded-full animate-ping opacity-20"></div>
-            <div className="relative w-32 h-32 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-full animate-sphere-morph shadow-xl flex items-center justify-center">
-                <span className="text-white font-black text-lg">AI 분석</span>
+      <div className="flex flex-col items-center min-h-screen bg-white font-sans overflow-hidden pt-20 pb-10">
+        <div className="relative w-64 h-64 flex items-center justify-center mb-16">
+          <div className="absolute w-full h-full bg-blue-400/15 blur-[80px] animate-pulse"></div>
+          <div className="relative w-44 h-44 bg-gradient-to-tr from-blue-700 via-cyan-500 to-indigo-600 rounded-full animate-sphere-morph shadow-[inset_0_0_30px_rgba(255,255,255,0.3)]"></div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="text-[10px] font-black tracking-[0.4em] text-white/90 uppercase mb-2">
+              Processing
+            </span>
+            <div className="flex gap-1.5 items-center">
+              <span className="text-xl font-black text-white">분석 중...</span>
             </div>
+          </div>
         </div>
-        <div className="w-full max-w-4xl px-8">
-            <div className="grid grid-cols-5 gap-3">
-                {analysisPhases.map((phase, idx) => (
-                    <div key={idx} className={`p-4 rounded-2xl border text-center transition-all duration-500 ${loadingStep === idx ? "bg-blue-600 border-blue-600 text-white scale-105 shadow-lg" : "bg-gray-50 opacity-40"}`}>
-                        <div className="text-[10px] font-bold uppercase mb-1">{phase.title}</div>
-                        <div className="text-xs font-black">{phase.label}</div>
-                    </div>
-                ))}
-            </div>
+        <div className="w-full max-w-6xl px-10">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
+              AI 광고 컴플라이언스 엔진 가동 중
+            </h2>
+            <p className="text-gray-500 mt-2 text-sm">
+              현재 단계: {analysisPhases[loadingStep].title} -{" "}
+              {analysisPhases[loadingStep].label}
+            </p>
+          </div>
+          <div className="flex flex-row justify-center items-stretch gap-4">
+            {analysisPhases.map((phase, index) => (
+              <div
+                key={index}
+                className={`flex-1 transition-all duration-700 p-6 rounded-[32px] border flex flex-col items-center text-center ${
+                  loadingStep === index
+                    ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white"
+                    : loadingStep > index
+                      ? "bg-blue-50 border-blue-100 opacity-60"
+                      : "bg-gray-50 border-gray-100 opacity-30"
+                }`}
+              >
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black mb-4 ${
+                    loadingStep === index
+                      ? "bg-white text-blue-600"
+                      : "bg-blue-100 text-blue-600"
+                  }`}
+                >
+                  {loadingStep > index ? "✓" : index + 1}
+                </div>
+                <h4 className="font-bold text-xs mb-1">
+                  {phase.title} · {phase.label}
+                </h4>
+                {loadingStep === index && (
+                  <p
+                    className="text-[10px] mt-2 bg-white/10 p-2 rounded-xl animate-fade-in"
+                    dangerouslySetInnerHTML={{ __html: phase.detail }}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
-        <style dangerouslySetInnerHTML={{ __html: `@keyframes sphereMorph { 0% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; } 50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; } 100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; } } .animate-sphere-morph { animation: sphereMorph 6s ease-in-out infinite; }` }} />
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
+          @keyframes sphereMorph {
+            0% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(0deg) scale(1); }
+            50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; transform: rotate(180deg) scale(1.1); }
+            100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(360deg) scale(1); }
+          }
+          .animate-sphere-morph { animation: sphereMorph 8s ease-in-out infinite; }
+          .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
+          @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        `,
+          }}
+        />
       </div>
     );
   }
 
-  if (error || !resultData) return <div className="p-20 text-center text-red-500">{error || "오류"}</div>;
+  if (error || !resultData)
+    return (
+      <div className="p-20 text-center text-red-500 font-bold">
+        {error || "결과 오류"}
+      </div>
+    );
 
   const riskBadgeMap: any = {
-    High: { bg: "bg-red-50", text: "text-red-600", label: "위험" },
-    Medium: { bg: "bg-yellow-50", text: "text-yellow-600", label: "주의" },
-    Low: { bg: "bg-green-50", text: "text-green-600", label: "안전" },
+    High: { bg: "bg-red-50", text: "text-red-600", label: "위험 단계" },
+    Medium: { bg: "bg-yellow-50", text: "text-yellow-600", label: "주의 단계" },
+    Low: { bg: "bg-green-50", text: "text-green-600", label: "안전 단계" },
   };
-  const riskBadge = riskBadgeMap[resultData.riskLevel] || { bg: "bg-gray-50", text: "text-gray-500", label: "미확인" };
+  const riskBadge = riskBadgeMap[resultData.riskLevel] || {
+    bg: "bg-gray-50",
+    text: "text-gray-500",
+    label: "분석 불가",
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center py-12 px-4">
-      <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-2xl border border-slate-100 p-8 md:p-14 relative">
-        
-        {/* 상단 섹션 */}
-        <div className="flex justify-between items-center mb-12">
+    <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-6">
+      <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-sm border border-gray-100 p-8 md:p-14 relative overflow-hidden">
+
+        {/* 상단 타이틀 */}
+        <div className="flex justify-between items-end mb-10 mt-6">
           <div>
-            <h1 className="text-3xl font-black text-slate-900">컴플라이언스 리포트</h1>
-            <p className="text-slate-400 text-sm mt-1">AI 기반 광고 문구 적정성 분석 결과입니다.</p>
+            <span className="text-blue-600 font-bold text-xs tracking-widest uppercase mb-2 block">
+              Analysis Report
+            </span>
+            <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">
+              분석 결과 리포트
+            </h1>
           </div>
-          <div className={`${riskBadge.bg} ${riskBadge.text} px-6 py-2 rounded-full font-black border flex items-center gap-2`}>
-            <ShieldAlert size={18} /> {riskBadge.label} 단계
+          <div
+            className={`${riskBadge.bg} ${riskBadge.text} px-5 py-2 rounded-full font-bold border flex items-center gap-2`}
+          >
+            <ShieldAlert size={16} /> {riskBadge.label}
           </div>
         </div>
 
-        {/* 종합 의견 */}
-        <div className="mb-12 p-6 bg-slate-50 rounded-3xl border border-slate-100 flex gap-4 items-start">
-            <div className="p-2 bg-blue-600 rounded-lg text-white"><LayoutDashboard size={20}/></div>
-            <div>
-                <h3 className="font-bold text-slate-800 mb-1 text-md">총평</h3>
-                <p className="text-sm text-slate-600 leading-relaxed">{resultData.explanation}</p>
-            </div>
+        {/* 종합 판정 */}
+        <div className="mb-10 p-6 bg-blue-50/30 rounded-3xl border flex gap-3 text-left">
+          <Info size={18} className="text-blue-500 shrink-0 mt-1" />
+          <div>
+            <h4 className="font-bold text-blue-900 mb-1 text-sm">종합 분석 의견</h4>
+            <p className="text-sm text-gray-700 leading-relaxed">
+              {resultData.explanation}
+            </p>
+          </div>
         </div>
 
-        {/* 🛠️ 좌(Before) 우(After) 레이아웃 복구 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-          
-          {/* 🔴 Left: Before (하이라이트 포함 발췌) */}
-          <div className="bg-white border-2 border-slate-100 rounded-[32px] overflow-hidden">
-            <div className="bg-red-50 px-6 py-4 border-b border-red-100 flex justify-between items-center">
-                <span className="text-red-600 font-black text-sm uppercase flex items-center gap-2">
-                    <AlertCircle size={14}/> Before
-                </span>
-                <span className="text-[10px] text-red-400 font-bold uppercase">Original Text</span>
-            </div>
-            <div className="p-8 min-h-[220px] leading-loose text-lg">
-              {/* 위반 사항이 있는 청크 주변만 보여주거나 전체에서 하이라이트 */}
-              {resultData.spellCheck.original.map((chunk: any, i: number) => (
+        {/* Step 1: 원본 위반 하이라이트 */}
+        <div className="mb-12">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
+            <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-md">Step 1</span> 원본 문구 위반 하이라이트
+          </h3>
+          <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 text-left relative min-h-[160px]">
+            <div className="leading-relaxed text-lg text-zinc-600">
+              {resultData.spellCheck.original.map((chunk: any, i: number) =>
                 chunk.isError ? (
-                  <span key={i} className="relative inline-block mx-0.5 group">
-                    <span className="bg-red-500 text-white font-black px-1.5 py-0.5 rounded-md shadow-sm">
+                  <span
+                    key={i}
+                    className="relative inline-block mx-1 group cursor-help"
+                  >
+                    <span className="text-red-600 font-extrabold bg-red-100 px-1.5 py-0.5 rounded-md underline decoration-red-500 underline-offset-4">
                       {chunk.text}
                     </span>
-                    {/* 툴팁 */}
-                    <span className="absolute bottom-full left-0 mb-2 hidden group-hover:block w-48 bg-slate-800 text-white text-[10px] p-2 rounded-lg z-50 shadow-xl">
-                        {chunk.violation?.explanation || "수정이 필요한 문구"}
+                    <span className="absolute bottom-full left-0 mb-4 hidden group-hover:block w-max max-w-xs bg-gray-800 text-white text-[10px] px-3 py-2 rounded-lg shadow-xl z-20">
+                      {chunk.violation?.explanation || "수정이 필요한 문구입니다."}
                     </span>
                   </span>
                 ) : (
-                  <span key={i} className="text-slate-400">{chunk.text}</span>
+                  <span key={i}>{chunk.text}</span>
                 )
-              ))}
-            </div>
-          </div>
-
-          {/* 🔵 Right: After (수정 제안) */}
-          <div className="bg-white border-2 border-blue-100 rounded-[32px] overflow-hidden shadow-sm">
-            <div className="bg-blue-50 px-6 py-4 border-b border-blue-100 flex justify-between items-center">
-                <span className="text-blue-600 font-black text-sm uppercase flex items-center gap-2">
-                    <CheckCircle2 size={14}/> After
-                </span>
-                <span className="text-[10px] text-blue-400 font-bold uppercase">AI Refined</span>
-            </div>
-            <div className="p-8 min-h-[220px] flex flex-col justify-center">
-                <p className="text-slate-800 font-bold text-xl leading-relaxed italic">
-                    "{editedText}"
-                </p>
-                <div className="mt-6 flex items-center gap-2 text-blue-500 text-[11px] font-bold">
-                    <ArrowRight size={14}/> 법적 준수 사항이 모두 반영되었습니다.
-                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* 위반 상세 내역 테이블 */}
-        <section className="mb-14">
-          <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-            <AlertCircle className="text-red-500" size={24} /> 위반 상세 내역 (발췌)
-          </h3>
-          <div className="overflow-hidden border border-slate-100 rounded-2xl shadow-sm">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-slate-50 border-b border-slate-100">
-                <tr>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 w-1/4 uppercase tracking-tighter">위반 문구</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 w-1/4 uppercase tracking-tighter">유형</th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-tighter">상세 분석</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {resultData.violations.map((v: any, idx: number) => (
-                  <tr key={idx} className="hover:bg-red-50/20 transition-colors">
-                    <td className="px-6 py-4 text-sm font-bold text-red-600 bg-red-50/10">"{v.phrase || v.violation_word}"</td>
-                    <td className="px-6 py-4 text-[11px] font-bold text-slate-400">{v.type || "규정 위반"}</td>
-                    <td className="px-6 py-4 text-xs text-slate-500 leading-relaxed">{v.explanation}</td>
+        {/* 위반 상세 테이블 */}
+        {resultData.violations.length > 0 && (
+          <div className="mb-12">
+            <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
+              <AlertCircle className="text-red-500" size={24} /> 위반 상세 내역
+            </h3>
+            <div className="overflow-hidden border border-gray-200 rounded-2xl">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-500 w-1/4">위반 문구</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-500 w-1/4">위반 유형</th>
+                    <th className="px-6 py-4 text-xs font-bold text-gray-500">상세 이유 및 가이드</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        {/* 법적 근거 */}
-        <section className="mb-14">
-          <h3 className="text-xl font-bold text-slate-900 mb-6 flex items-center gap-2">
-            <BookOpen className="text-blue-600" size={24} /> 근거 법령 및 가이드라인
-          </h3>
-          <div className="space-y-3">
-            {resultData.legalGrounds.map((doc: any, idx: number) => (
-              <div key={idx} className="p-5 bg-slate-50/50 border border-slate-200 rounded-2xl flex gap-4 items-start">
-                <FileText className="text-slate-400 shrink-0 mt-0.5" size={18} />
-                <div className="text-xs text-slate-600 leading-relaxed italic">"{doc.content}"</div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* 다른 추천 제안 */}
-        <section className="mb-14">
-            <h3 className="text-lg font-bold text-slate-800 mb-6 flex items-center gap-2">✨ 다른 스타일 추천안</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {resultData.suggestions.map((item: any, idx: number) => (
-                    <button key={idx} onClick={() => { setEditedText(item.text); navigator.clipboard.writeText(item.text); }}
-                        className="p-6 bg-white border-2 border-slate-100 rounded-3xl hover:border-blue-500 hover:shadow-lg transition-all text-left group">
-                        <div className="text-[10px] font-black text-blue-500 mb-3 uppercase tracking-widest">{item.tag}</div>
-                        <p className="text-sm text-slate-700 font-bold leading-relaxed">"{item.text}"</p>
-                        <div className="mt-4 flex items-center justify-end opacity-0 group-hover:opacity-100 text-blue-500 transition-opacity"><Copy size={14}/></div>
-                    </button>
-                ))}
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {resultData.violations.map((v: any, idx: number) => (
+                    <tr key={idx} className="hover:bg-red-50/30 transition-colors">
+                      <td className="px-6 py-4 text-sm font-bold text-red-600">{v.phrase || v.violation_word}</td>
+                      <td className="px-6 py-4 text-xs font-medium text-gray-600">
+                        <span className="bg-gray-100 px-2 py-1 rounded">{v.type || "표현 부적합"}</span>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-gray-500 leading-relaxed">{v.explanation}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-        </section>
+          </div>
+        )}
 
-        <footer className="flex flex-col md:flex-row gap-4 pt-4 border-t border-slate-100">
-          <Link href="/upload" className="flex-1 h-14 bg-slate-900 text-white rounded-2xl flex items-center justify-center font-bold gap-2 hover:bg-black transition-all">
-            <ArrowLeft size={18} /> 이전으로
+        {/* 법령 근거 */}
+        {resultData.legalGrounds.length > 0 && (
+          <div className="mb-12">
+            <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
+              <BookOpen className="text-blue-600" size={24} /> 관련 법령 및 근거 (L2 Retriever)
+            </h3>
+            <div className="grid grid-cols-1 gap-4 text-left">
+              {resultData.legalGrounds.map((doc: any, idx: number) => (
+                <div key={idx} className="p-5 bg-blue-50/50 border border-blue-100 rounded-2xl flex gap-4">
+                  <FileText className="text-blue-400 shrink-0" size={20} />
+                  <div>
+                    <div className="font-bold text-blue-900 text-sm mb-1">{doc.title || "화장품 광고 가이드라인"}</div>
+                    <div className="text-xs text-gray-600 leading-relaxed">{doc.content}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step 2: AI 정화 완료 */}
+        <div className="mb-12">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
+            <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-md">Step 2</span> AI 정화 완료 카피
+          </h3>
+          <div className="bg-blue-50/30 rounded-[32px] p-8 relative border border-blue-100 text-left">
+            <div className="bg-blue-600 text-white rounded-full px-4 py-1.5 w-fit mb-6 text-sm font-bold">
+              추천 최종안
+            </div>
+            <textarea
+              readOnly
+              value={editedText}
+              className="w-full h-32 bg-white text-zinc-800 px-6 py-5 rounded-2xl font-bold shadow-sm resize-none outline-none leading-relaxed text-xl border border-blue-100"
+            />
+          </div>
+        </div>
+
+        {/* 스타일별 제안 */}
+        {resultData.suggestions.length > 0 && (
+          <div className="mb-12 text-left">
+            <h3 className="font-bold text-zinc-800 mb-6 flex items-center gap-2">
+              ✨ 스타일별 AI 교정 제안
+              <span className="text-sm font-normal text-zinc-400"> (클릭 시 복사) </span>
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {resultData.suggestions.map((item: any, index: number) => (
+                <div
+                  key={item.id}
+                  onClick={() => {
+                    navigator.clipboard.writeText(item.text);
+                    setEditedText(item.text);
+                    alert("선택한 문구가 적용 및 복사되었습니다.");
+                  }}
+                  className="p-6 bg-white border rounded-[28px] hover:border-blue-200 hover:shadow-lg transition-all cursor-pointer flex flex-col justify-between h-full group"
+                >
+                  <div>
+                    <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded uppercase tracking-wider mb-3 block w-fit">
+                      {item.tag}
+                    </span>
+                    <p className="text-sm text-zinc-700 font-bold leading-relaxed group-hover:text-blue-700">
+                      {item.text}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-end mt-4 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[10px] font-bold mr-1">Apply</span>
+                    <ChevronRight size={14} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <footer className="flex flex-col md:flex-row gap-4">
+          <Link
+            href="/upload"
+            className="flex-1 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-bold gap-2 hover:bg-blue-700 transition-all"
+          >
+            <ArrowLeft size={18} /> 새 이미지 검사
           </Link>
-          <button onClick={handleDownloadPDF} className="px-10 h-14 bg-blue-600 text-white rounded-2xl flex items-center justify-center font-bold gap-2 hover:bg-blue-700 transition-all">
-            <Scale size={18} /> 리포트 저장 (PDF)
+          <button
+            onClick={handleDownloadPDF}
+            className="px-10 h-14 border rounded-2xl flex items-center justify-center font-bold gap-2 hover:bg-gray-50 text-gray-600 transition-all"
+          >
+            <Scale size={18} /> 결과 보고서 저장 (PDF)
           </button>
         </footer>
       </main>

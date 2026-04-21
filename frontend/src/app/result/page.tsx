@@ -11,7 +11,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-// --- 백엔드 연동용 유틸리티 ---
+// --- 유틸리티 ---
 function toRiskLevel(verdict: string) {
   switch (verdict) {
     case "hard_block": return "High";
@@ -21,46 +21,73 @@ function toRiskLevel(verdict: string) {
   }
 }
 
-function buildOriginalChunks(copy: string, violations: any[]) {
+/**
+ * 원본 텍스트를 위반 단어 기준으로 청킹.
+ * violations 배열 + explanation 텍스트에서 추출한 키워드를 모두 시도.
+ */
+function buildOriginalChunks(copy: string, violations: any[], explanation: string) {
   if (!copy) return [];
+
+  // 1) violations 배열에서 후보 구절 수집
+  const candidates: { phrase: string; violation?: any }[] = [];
+
+  for (const v of violations) {
+    const phrase = (v.phrase || v.violation_word || v.keyword || "").trim();
+    if (phrase) candidates.push({ phrase, violation: v });
+  }
+
+  // 2) violations가 없거나 부족하면 explanation 에서 홑따옴표 / 쌍따옴표 안 키워드 추출
+  //    ex) "설명에서 '보톡스', '14일 만에' 등이 문제" 형태 파싱
+  if (candidates.length === 0) {
+    const quoted = explanation.match(/['''""]([^''""\n]{1,30})['''""]/g) || [];
+    for (const q of quoted) {
+      const phrase = q.replace(/^['''""]|['''"""]$/g, "").trim();
+      if (phrase && copy.includes(phrase)) {
+        candidates.push({ phrase, violation: { explanation: `"${phrase}" 표현은 법적으로 금지된 표현입니다.` } });
+      }
+    }
+  }
+
+  // 3) 후보가 여전히 없으면 전체를 단일 청크로 반환
+  if (candidates.length === 0) {
+    return [{ text: copy, isError: false }];
+  }
+
+  // 4) 청킹: 긴 구절 먼저 매칭 (짧은 게 긴 것 안을 잘라버리지 않도록)
+  const sorted = [...candidates].sort((a, b) => b.phrase.length - a.phrase.length);
+
   let chunks: { text: string; isError: boolean; violation?: any }[] = [
     { text: copy, isError: false },
   ];
 
-  for (const v of violations) {
-    const phrase: string = (
-      v.phrase || v.violation_word || v.keyword || ""
-    ).trim();
-    if (!phrase) continue;
-
-    const next: { text: string; isError: boolean; violation?: any }[] = [];
+  for (const { phrase, violation } of sorted) {
+    const next: typeof chunks = [];
     for (const chunk of chunks) {
       if (chunk.isError) { next.push(chunk); continue; }
       const idx = chunk.text.indexOf(phrase);
       if (idx === -1) { next.push(chunk); continue; }
       if (idx > 0)
         next.push({ text: chunk.text.slice(0, idx), isError: false });
-      next.push({ text: phrase, isError: true, violation: v });
+      next.push({ text: phrase, isError: true, violation });
       if (idx + phrase.length < chunk.text.length)
         next.push({ text: chunk.text.slice(idx + phrase.length), isError: false });
     }
     chunks = next;
   }
+
   return chunks;
 }
 
-// After 카드: 안전 키워드만 파란 볼드
+// After 카드: 안전 키워드 파란 볼드
 function buildAfterChunks(afterText: string) {
-  if (!afterText) return [{ text: afterText, isNew: false }];
+  if (!afterText) return [{ text: "", isNew: false }];
   const safeKeywords = [
     "개선에 도움", "효과적으로 관리", "효과적", "관리",
-    "개선", "완화", "도움", "케어", "촉촉", "진정", "촉촉한",
+    "개선", "완화", "도움", "케어", "촉촉한", "촉촉", "진정",
   ];
-  let chunks: { text: string; isNew: boolean }[] = [
-    { text: afterText, isNew: false },
-  ];
+  let chunks: { text: string; isNew: boolean }[] = [{ text: afterText, isNew: false }];
   for (const kw of safeKeywords) {
-    const next: { text: string; isNew: boolean }[] = [];
+    const next: typeof chunks = [];
     for (const chunk of chunks) {
       if (chunk.isNew) { next.push(chunk); continue; }
       const idx = chunk.text.indexOf(kw);
@@ -76,33 +103,31 @@ function buildAfterChunks(afterText: string) {
 }
 
 const STYLE_LABELS: Record<string, string> = {
-  safe: "가장 안전 🟢",
-  marketing: "자연스러움 🟡",
+  safe:       "가장 안전 🟢",
+  marketing:  "자연스러움 🟡",
   functional: "마케팅 강조 🔵",
 };
 
 const analysisPhases = [
-  { title: "L1", label: "Rule Engine",  desc: "금지어 즉시 식별",   detail: "블랙리스트 기반 점검" },
-  { title: "L2", label: "Retriever",    desc: "법적 근거 검색",    detail: "화장품법 및 가이드라인 참조" },
-  { title: "L3", label: "Judge",        desc: "종합 판정",         detail: "GPT-4o 엔진 기반 심층 분석" },
-  { title: "L4", label: "Rewriter",     desc: "수정 제안 생성",    detail: "대안 카피 생성" },
-  { title: "L5", label: "Re-Judge",     desc: "최종 검증",         detail: "수정안 교차 검증" },
+  { title: "L1", label: "Rule Engine", detail: "블랙리스트 기반 점검" },
+  { title: "L2", label: "Retriever",   detail: "화장품법 및 가이드라인 참조" },
+  { title: "L3", label: "Judge",       detail: "GPT-4o 엔진 기반 심층 분석" },
+  { title: "L4", label: "Rewriter",    detail: "대안 카피 생성" },
+  { title: "L5", label: "Re-Judge",    detail: "수정안 교차 검증" },
 ];
+const stepToIndex: Record<string, number> = { L1:0, L2:1, L3:2, L4:3, L5:4 };
 
-const stepToIndex: Record<string, number> = {
-  L1: 0, L2: 1, L3: 2, L4: 3, L5: 4,
-};
-
+// ══════════════════════════════════════════════════════════════
 export default function ResultPage() {
-  const [isLoading,    setIsLoading]    = useState(true);
-  const [loadingStep,  setLoadingStep]  = useState(0);
-  const [resultData,   setResultData]   = useState<any>(null);
-  const [error,        setError]        = useState<string | null>(null);
-  const [editedText,   setEditedText]   = useState("");
-  const [violationMeta, setViolationMeta] = useState<{
-    legalBasis: string;
-    safeKeywordsUsed: string[];
-  }>({ legalBasis: "", safeKeywordsUsed: [] });
+  const [isLoading,     setIsLoading]     = useState(true);
+  const [loadingStep,   setLoadingStep]   = useState(0);
+  const [resultData,    setResultData]    = useState<any>(null);
+  const [error,         setError]         = useState<string | null>(null);
+  const [editedText,    setEditedText]    = useState("");
+  const [violationMeta, setViolationMeta] = useState({
+    legalBasis: "",
+    safeKeywordsUsed: [] as string[],
+  });
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -112,54 +137,41 @@ export default function ResultPage() {
     if (!text) {
       try {
         const raw = localStorage.getItem("adguard_result");
-        if (!raw) {
-          setError("데이터가 없습니다. 분석을 먼저 진행해주세요.");
-          setIsLoading(false);
-          return;
-        }
+        if (!raw) { setError("데이터가 없습니다. 분석을 먼저 진행해주세요."); setIsLoading(false); return; }
         processResult(JSON.parse(raw));
         setIsLoading(false);
-      } catch {
-        setError("데이터 로드 오류");
-        setIsLoading(false);
-      }
+      } catch { setError("데이터 로드 오류"); setIsLoading(false); }
       return;
     }
 
     let user_id = localStorage.getItem("adguard_user_id") || "";
-    if (!user_id) {
-      user_id = crypto.randomUUID();
-      localStorage.setItem("adguard_user_id", user_id);
-    }
+    if (!user_id) { user_id = crypto.randomUUID(); localStorage.setItem("adguard_user_id", user_id); }
 
     const params = new URLSearchParams({ text, product_type: productType, user_id });
     const es = new EventSource(`/api/analyze-stream?${params.toString()}`);
     esRef.current = es;
 
     es.addEventListener("progress", (e: any) => {
-      const data = JSON.parse(e.data);
-      const idx  = stepToIndex[data.step];
+      const d = JSON.parse(e.data);
+      const idx = stepToIndex[d.step];
       if (idx !== undefined) setLoadingStep(idx);
     });
 
     es.addEventListener("result", (e: any) => {
       const data = JSON.parse(e.data);
       localStorage.setItem("adguard_result", JSON.stringify(data));
-
       try {
-        const prev  = JSON.parse(localStorage.getItem("adguard_history") || "[]");
-        const entry = {
-          task_id:          data.task_id || crypto.randomUUID(),
-          verdict:          data.final_verdict || "",
-          risk_summary:     data.explanation   || "",
-          timestamp:        new Date().toISOString(),
-          text_preview:     (data.copy || data.ad_copy || "").slice(0, 200),
+        const prev = JSON.parse(localStorage.getItem("adguard_history") || "[]");
+        prev.unshift({
+          task_id:           data.task_id || crypto.randomUUID(),
+          verdict:           data.final_verdict || "",
+          risk_summary:      data.explanation   || "",
+          timestamp:         new Date().toISOString(),
+          text_preview:      (data.copy || data.ad_copy || "").slice(0, 200),
           verified_rewrites: data.verified_rewrites || [],
-        };
-        prev.unshift(entry);
+        });
         localStorage.setItem("adguard_history", JSON.stringify(prev.slice(0, 100)));
       } catch {}
-
       sessionStorage.removeItem("analyzeText");
       sessionStorage.removeItem("analyzeProductType");
       processResult(data);
@@ -177,41 +189,36 @@ export default function ResultPage() {
   }, []);
 
   function processResult(backend: any) {
-    const copy       = backend.copy ?? backend.ad_copy ?? backend.ad_text ?? "";
-    const violations = backend.violations ?? [];
-    const rewrites   = backend.verified_rewrites ?? [];
+    const copy        = backend.copy ?? backend.ad_copy ?? backend.ad_text ?? "";
+    const violations  = backend.violations ?? [];
+    const rewrites    = backend.verified_rewrites ?? [];
+    const explanation = backend.explanation ?? "";
 
-    const originalChunks = buildOriginalChunks(copy, violations);
+    // ★ 핵심: explanation까지 활용해서 하이라이트 청킹
+    const originalChunks = buildOriginalChunks(copy, violations, explanation);
     const safeRewrite    = rewrites.find((r: any) => r.style === "safe") ?? rewrites[0];
 
-    if (safeRewrite) setEditedText(safeRewrite.text ?? "");
+    if (safeRewrite?.text) setEditedText(safeRewrite.text);
 
-    // 법적 근거
     const legalBasis =
-      violations[0]?.legal_basis ||
-      violations[0]?.law         ||
-      backend.legal_basis        ||
-      "화장품법 제13조 위반";
+      violations[0]?.legal_basis || violations[0]?.law ||
+      backend.legal_basis || "화장품법 제13조 위반";
 
-    // 권장 키워드 (수정안 텍스트 기반)
     const safeText = safeRewrite?.text ?? "";
-    const candidates = ["개선에 도움", "효과적으로 관리", "관리", "완화", "도움", "촉촉", "케어"];
-    const safeKws = candidates.filter((kw) => safeText.includes(kw));
+    const kwCandidates = ["개선에 도움", "효과적으로 관리", "관리", "완화", "도움", "촉촉", "케어"];
+    const safeKws = kwCandidates.filter((kw) => safeText.includes(kw));
 
     setViolationMeta({
-      legalBasis:      `과대광고: 의학적 효능 표방 및 절대적 표현 사용 금지 (${legalBasis})`,
+      legalBasis:       `과대광고: 의학적 효능 표방 및 절대적 표현 사용 금지 (${legalBasis})`,
       safeKeywordsUsed: safeKws.length > 0 ? safeKws : ["개선에 도움", "관리", "완화"],
     });
 
     setResultData({
       riskLevel:   toRiskLevel(backend.final_verdict),
-      explanation: backend.explanation ?? "",
+      explanation,
       spellCheck:  { original: originalChunks },
-      violations,
       suggestions: rewrites.map((r: any, i: number) => ({
-        id:  i + 1,
-        text: r.text,
-        tag:  STYLE_LABELS[r.style] ?? r.style,
+        id: i + 1, text: r.text, tag: STYLE_LABELS[r.style] ?? r.style,
       })),
     });
   }
@@ -222,81 +229,61 @@ export default function ResultPage() {
       const raw  = localStorage.getItem("adguard_result");
       const body = raw ? JSON.parse(raw) : {};
       const res  = await fetch(`${backendUrl}/report`, {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(body),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       if (!res.ok) return;
       const blob = await res.blob();
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement("a");
-      a.href     = url;
-      a.download = "adguard_report.pdf";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch {
-      alert("다운로드 오류");
-    }
+      a.href = url; a.download = "adguard_report.pdf";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    } catch { alert("다운로드 오류"); }
   };
 
-  // ── 로딩 화면 ──────────────────────────────────────────
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center min-h-screen bg-white font-sans overflow-hidden pt-20 pb-10">
-        <div className="relative w-64 h-64 flex items-center justify-center mb-16">
-          <div className="absolute w-full h-full bg-blue-400/15 blur-[80px] animate-pulse" />
-          <div className="relative w-44 h-44 bg-gradient-to-tr from-blue-700 via-cyan-500 to-indigo-600 rounded-full animate-sphere-morph shadow-[inset_0_0_30px_rgba(255,255,255,0.3)]" />
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-[10px] font-black tracking-[0.4em] text-white/90 uppercase mb-2">Processing</span>
-            <span className="text-xl font-black text-white">분석 중...</span>
-          </div>
+  // ── 로딩 ──
+  if (isLoading) return (
+    <div className="flex flex-col items-center min-h-screen bg-white pt-20 pb-10">
+      <div className="relative w-64 h-64 flex items-center justify-center mb-16">
+        <div className="absolute w-full h-full bg-blue-400/15 blur-[80px] animate-pulse" />
+        <div className="relative w-44 h-44 bg-gradient-to-tr from-blue-700 via-cyan-500 to-indigo-600 rounded-full animate-sphere-morph shadow-[inset_0_0_30px_rgba(255,255,255,0.3)]" />
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-[10px] font-black tracking-[0.4em] text-white/90 uppercase mb-2">Processing</span>
+          <span className="text-xl font-black text-white">분석 중...</span>
         </div>
-        <div className="w-full max-w-6xl px-10">
-          <div className="text-center mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">AI 광고 컴플라이언스 엔진 가동 중</h2>
-            <p className="text-gray-500 mt-2 text-sm">
-              현재 단계: {analysisPhases[loadingStep].title} - {analysisPhases[loadingStep].label}
-            </p>
-          </div>
-          <div className="flex flex-row justify-center items-stretch gap-4">
-            {analysisPhases.map((phase, index) => (
-              <div
-                key={index}
-                className={`flex-1 transition-all duration-700 p-6 rounded-[32px] border flex flex-col items-center text-center ${
-                  loadingStep === index
-                    ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white"
-                    : loadingStep > index
-                    ? "bg-blue-50 border-blue-100 opacity-60"
-                    : "bg-gray-50 border-gray-100 opacity-30"
-                }`}
-              >
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black mb-4 ${
-                  loadingStep === index ? "bg-white text-blue-600" : "bg-blue-100 text-blue-600"
-                }`}>
-                  {loadingStep > index ? "✓" : index + 1}
-                </div>
-                <h4 className="font-bold text-xs mb-1">{phase.title} · {phase.label}</h4>
-                {loadingStep === index && (
-                  <p className="text-[10px] mt-2 bg-white/10 p-2 rounded-xl animate-fade-in">{phase.detail}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-        <style dangerouslySetInnerHTML={{ __html: `
-          @keyframes sphereMorph {
-            0%   { border-radius:60% 40% 30% 70%/60% 30% 70% 40%; transform:rotate(0deg) scale(1); }
-            50%  { border-radius:30% 60% 70% 40%/50% 60% 30% 60%; transform:rotate(180deg) scale(1.1); }
-            100% { border-radius:60% 40% 30% 70%/60% 30% 70% 40%; transform:rotate(360deg) scale(1); }
-          }
-          .animate-sphere-morph { animation:sphereMorph 8s ease-in-out infinite; }
-          .animate-fade-in { animation:fadeIn 0.5s ease-out forwards; }
-          @keyframes fadeIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:translateY(0)} }
-        `}} />
       </div>
-    );
-  }
+      <div className="w-full max-w-6xl px-10">
+        <div className="text-center mb-12">
+          <h2 className="text-2xl font-bold text-gray-900">AI 광고 컴플라이언스 엔진 가동 중</h2>
+          <p className="text-gray-500 mt-2 text-sm">현재 단계: {analysisPhases[loadingStep].title} - {analysisPhases[loadingStep].label}</p>
+        </div>
+        <div className="flex flex-row justify-center items-stretch gap-4">
+          {analysisPhases.map((phase, i) => (
+            <div key={i} className={`flex-1 transition-all duration-700 p-6 rounded-[32px] border flex flex-col items-center text-center ${
+              loadingStep === i ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white"
+              : loadingStep > i ? "bg-blue-50 border-blue-100 opacity-60"
+              : "bg-gray-50 border-gray-100 opacity-30"
+            }`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black mb-4 ${
+                loadingStep === i ? "bg-white text-blue-600" : "bg-blue-100 text-blue-600"
+              }`}>{loadingStep > i ? "✓" : i + 1}</div>
+              <h4 className="font-bold text-xs mb-1">{phase.title} · {phase.label}</h4>
+              {loadingStep === i && <p className="text-[10px] mt-2 bg-white/10 p-2 rounded-xl animate-fade-in">{phase.detail}</p>}
+            </div>
+          ))}
+        </div>
+      </div>
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes sphereMorph {
+          0%   { border-radius:60% 40% 30% 70%/60% 30% 70% 40%; transform:rotate(0deg) scale(1); }
+          50%  { border-radius:30% 60% 70% 40%/50% 60% 30% 60%; transform:rotate(180deg) scale(1.1); }
+          100% { border-radius:60% 40% 30% 70%/60% 30% 70% 40%; transform:rotate(360deg) scale(1); }
+        }
+        .animate-sphere-morph { animation:sphereMorph 8s ease-in-out infinite; }
+        .animate-fade-in { animation:fadeIn 0.5s ease-out forwards; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(5px)} to{opacity:1;transform:translateY(0)} }
+      `}} />
+    </div>
+  );
 
   if (error || !resultData)
     return <div className="p-20 text-center text-red-500 font-bold">{error || "결과 오류"}</div>;
@@ -306,23 +293,18 @@ export default function ResultPage() {
     Medium: { bg: "bg-yellow-50", text: "text-yellow-600", label: "주의 단계" },
     Low:    { bg: "bg-green-50",  text: "text-green-600",  label: "안전 단계" },
   };
-  const riskBadge = riskBadgeMap[resultData.riskLevel] || {
-    bg: "bg-gray-50", text: "text-gray-500", label: "분석 불가",
-  };
-
+  const riskBadge = riskBadgeMap[resultData.riskLevel] || { bg: "bg-gray-50", text: "text-gray-500", label: "분석 불가" };
   const afterChunks = buildAfterChunks(editedText);
 
-  // ── 결과 화면 ──────────────────────────────────────────
+  // ── 결과 화면 ──
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-6">
-      <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-sm border border-gray-100 p-8 md:p-14 relative overflow-hidden">
+      <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-sm border border-gray-100 p-8 md:p-14">
 
         {/* 헤더 */}
         <div className="flex justify-between items-end mb-10 mt-6">
           <div>
-            <span className="text-blue-600 font-bold text-xs tracking-widest uppercase mb-2 block">
-              Analysis Report
-            </span>
+            <span className="text-blue-600 font-bold text-xs tracking-widest uppercase mb-2 block">Analysis Report</span>
             <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">분석 결과 리포트</h1>
           </div>
           <div className={`${riskBadge.bg} ${riskBadge.text} px-5 py-2 rounded-full font-bold border flex items-center gap-2`}>
@@ -330,13 +312,13 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {/* 설명 박스 */}
+        {/* 설명 */}
         <div className="mb-10 p-6 bg-blue-50/30 rounded-3xl border flex gap-3 text-left">
           <Info size={18} className="text-blue-500 shrink-0 mt-1" />
           <p className="text-sm text-gray-700 leading-relaxed">{resultData.explanation}</p>
         </div>
 
-        {/* ── Before / After 2열 카드 ── */}
+        {/* ── Before / After ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12 text-left items-stretch">
 
           {/* BEFORE */}
@@ -344,49 +326,40 @@ export default function ResultPage() {
             <span className="absolute top-5 right-5 bg-red-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">
               수정 전 (위반 사례)
             </span>
-
             <div className="flex items-center gap-2 mb-5 mt-1">
               <AlertCircle size={17} className="text-red-500 shrink-0" />
               <h3 className="text-base font-extrabold text-red-600">위반 의심 문구</h3>
             </div>
 
-            {/* 텍스트 박스 */}
             <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-red-100 flex-1">
-              <p className="text-base leading-[1.9] text-gray-400 italic">
-                {resultData.spellCheck.original.length === 0 ? (
-                  <span className="text-gray-300">원본 텍스트 없음</span>
-                ) : (
-                  resultData.spellCheck.original.map((chunk: any, i: number) =>
-                    chunk.isError ? (
-                      /* ── 위반 단어: 빨간 배경 하이라이트 ── */
-                      <span key={i} className="relative inline-block group cursor-help">
-                        <span className="
-                          bg-red-100
-                          text-red-600
-                          font-extrabold
-                          not-italic
-                          px-1.5 py-0.5
-                          rounded
-                          border-b-2 border-red-500
-                          underline decoration-red-400 decoration-wavy underline-offset-2
-                        ">
-                          {chunk.text}
-                        </span>
-                        {/* 호버 툴팁 */}
-                        <span className="
-                          absolute bottom-full left-0 mb-2
-                          hidden group-hover:block
-                          w-max max-w-[220px]
-                          bg-gray-800 text-white text-xs
-                          px-3 py-2 rounded-lg shadow-xl z-20 not-italic font-normal
-                        ">
-                          {chunk.violation?.explanation || chunk.violation?.type || "수정이 필요한 문구입니다."}
-                        </span>
+              <p className="text-base leading-[2] italic">
+                {resultData.spellCheck.original.map((chunk: any, i: number) =>
+                  chunk.isError ? (
+                    <span key={i} className="relative inline-block group cursor-help">
+                      {/* ★ 위반 단어 하이라이트 */}
+                      <span className="
+                        bg-red-100 text-red-600 font-extrabold not-italic
+                        px-1 py-0.5 rounded
+                        border-b-[3px] border-red-500
+                        underline decoration-red-400 decoration-wavy underline-offset-2
+                      ">
+                        {chunk.text}
                       </span>
-                    ) : (
-                      /* 일반 텍스트: 흐리게 */
-                      <span key={i} className="text-slate-400">{chunk.text}</span>
-                    )
+                      {/* 툴팁 */}
+                      <span className="
+                        absolute bottom-full left-0 mb-2 hidden group-hover:flex
+                        items-start gap-1.5
+                        w-max max-w-[240px]
+                        bg-gray-900 text-white text-xs
+                        px-3 py-2 rounded-xl shadow-2xl z-20 not-italic font-normal
+                        leading-relaxed
+                      ">
+                        <AlertCircle size={12} className="shrink-0 mt-0.5 text-red-400" />
+                        {chunk.violation?.explanation || chunk.violation?.type || "법적으로 금지된 표현입니다."}
+                      </span>
+                    </span>
+                  ) : (
+                    <span key={i} className="text-slate-400">{chunk.text}</span>
                   )
                 )}
               </p>
@@ -402,20 +375,16 @@ export default function ResultPage() {
             <span className="absolute top-5 right-5 bg-blue-500 text-white text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">
               광고청정기 제안
             </span>
-
             <div className="flex items-center gap-2 mb-5 mt-1">
               <CheckCircle2 size={17} className="text-blue-500 shrink-0" />
               <h3 className="text-base font-extrabold text-blue-600">안전한 수정안</h3>
             </div>
 
-            {/* 텍스트 박스 */}
             <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-blue-100 flex-1">
-              <p className="text-base leading-[1.9] text-gray-400 italic">
+              <p className="text-base leading-[2] italic">
                 {afterChunks.map((chunk, i) =>
                   chunk.isNew ? (
-                    <span key={i} className="text-blue-600 font-extrabold not-italic">
-                      {chunk.text}
-                    </span>
+                    <span key={i} className="text-blue-600 font-extrabold not-italic">{chunk.text}</span>
                   ) : (
                     <span key={i} className="text-slate-400">{chunk.text}</span>
                   )
@@ -429,7 +398,7 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {/* ── 다른 AI 수정 제안 ── */}
+        {/* 추천 문구 */}
         {resultData.suggestions.length > 0 && (
           <div className="mb-12 text-left">
             <h3 className="font-bold text-zinc-800 mb-6 flex items-center gap-2">
@@ -440,18 +409,13 @@ export default function ResultPage() {
               {resultData.suggestions.map((item: any, index: number) => (
                 <div
                   key={item.id}
-                  onClick={() => {
-                    navigator.clipboard.writeText(item.text);
-                    setEditedText(item.text);
-                  }}
+                  onClick={() => { navigator.clipboard.writeText(item.text); setEditedText(item.text); }}
                   className="p-6 bg-white border rounded-[28px] hover:border-blue-200 hover:shadow-lg transition-all cursor-pointer flex flex-col justify-between h-full group"
                 >
                   <span className="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-md w-fit">
                     추천 문구 {index + 1}
                   </span>
-                  <p className="mt-4 text-zinc-700 font-medium leading-relaxed group-hover:text-blue-700">
-                    {item.text}
-                  </p>
+                  <p className="mt-4 text-zinc-700 font-medium leading-relaxed group-hover:text-blue-700">{item.text}</p>
                   <ChevronDown size={18} className="text-zinc-300 self-end mt-2" />
                 </div>
               ))}

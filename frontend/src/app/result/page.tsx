@@ -145,6 +145,69 @@ function buildAfterChunks(afterText: string) {
   return chunks;
 }
 
+/**
+ * explanation 텍스트를 구조화된 섹션으로 파싱
+ * 반환: { l1Keywords, l3Phrases, reasoning }
+ * - l1Keywords : "[L1] 키워드 매칭: 최초, 4주 만에" → ["최초", "4주 만에"]
+ * - l3Phrases  : "[L3] 카피에서 'XXX', 'YYY'" → ["XXX", "YYY"]
+ * - reasoning  : 판단 근거 문장들 (나머지 부분)
+ */
+function parseExplanation(explanation: string): {
+  l1Keywords: string[];
+  l3Phrases: string[];
+  reasoning: string;
+} {
+  const l1Keywords: string[] = [];
+  const l3Phrases: string[] = [];
+  let reasoning = "";
+
+  if (!explanation) return { l1Keywords, l3Phrases, reasoning };
+
+  // L1 키워드 추출: "[L1] 키워드 매칭: A, B, C" 패턴
+  const l1Match = explanation.match(/\[L1\][^/\n]*키워드[^:：]*[:：]\s*([^/\[]+)/i);
+  if (l1Match) {
+    const raw = l1Match[1].trim();
+    // 쉼표 구분 또는 따옴표 감싼 것 모두 추출
+    const quoted = raw.match(/['''""]([^''""\n]{1,30})['''""]/g) || [];
+    if (quoted.length > 0) {
+      l1Keywords.push(...quoted.map((q) => q.replace(/^['''""]|['''"""]$/g, "").trim()));
+    } else {
+      // 따옴표 없으면 쉼표/공백으로 분리
+      raw.split(/[,，]\s*/).forEach((k) => {
+        const t = k.trim();
+        if (t) l1Keywords.push(t);
+      });
+    }
+  }
+
+  // L3 문제 표현 추출: "[L3] 카피에서 'XXX', 'YYY' 등의 표현" 패턴
+  const l3SectionMatch = explanation.match(/\[L3\]([^.。]+)/i);
+  if (l3SectionMatch) {
+    const l3Raw = l3SectionMatch[1];
+    const quoted = l3Raw.match(/['''""]([^''""\n]{1,60})['''""]/g) || [];
+    l3Phrases.push(
+      ...quoted.map((q) => q.replace(/^['''""]|['''"""]$/g, "").trim()),
+    );
+  }
+
+  // 판단 근거: [L1]/[L3] 태그 이후 나오는 일반 문장들
+  // "등의 표현은 ~" 이후부터를 reasoning으로 사용
+  const reasoningMatch = explanation.match(
+    /등의\s*표현[은이]\s*([\s\S]+)$|[^\[\]]+(?:됩니다|합니다|있습니다)[^[]*$/,
+  );
+  if (reasoningMatch) {
+    reasoning = reasoningMatch[0].replace(/^등의\s*표현[은이]\s*/, "").trim();
+  } else {
+    // fallback: [L1]/[L3] 태그 제거 후 남은 텍스트
+    reasoning = explanation
+      .replace(/\[L[0-9]\][^\n/]*/g, "")
+      .replace(/\/\s*/g, "")
+      .trim();
+  }
+
+  return { l1Keywords, l3Phrases, reasoning };
+}
+
 const STYLE_LABELS: Record<string, string> = {
   safe: "가장 안전 🟢",
   marketing: "자연스러움 🟡",
@@ -526,13 +589,99 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {/* 설명 박스 - 원본 유지 */}
-        <div className="mb-10 p-6 bg-blue-50/30 rounded-3xl border flex gap-3 text-left">
-          <Info size={18} className="text-blue-500 shrink-0 mt-1" />
-          <p className="text-sm text-gray-700 leading-relaxed">
-            {resultData.explanation}
-          </p>
-        </div>
+        {/* ★ 설명 박스 - 구조화된 UI로 개편 */}
+        {(() => {
+          const { l1Keywords, l3Phrases, reasoning } = parseExplanation(
+            resultData.explanation,
+          );
+          const hasStructured = l1Keywords.length > 0 || l3Phrases.length > 0;
+
+          // 파싱 실패 시 기존 plain text fallback
+          if (!hasStructured) {
+            return (
+              <div className="mb-10 p-6 bg-blue-50/30 rounded-3xl border flex gap-3 text-left">
+                <Info size={18} className="text-blue-500 shrink-0 mt-1" />
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  {resultData.explanation}
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="mb-10 rounded-3xl border border-blue-100 bg-blue-50/20 overflow-hidden text-left">
+              {/* L1 행 */}
+              {l1Keywords.length > 0 && (
+                <div className="flex items-start gap-3 px-6 py-4 border-b border-blue-100">
+                  {/* 레이블 */}
+                  <span className="shrink-0 mt-0.5 bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded tracking-wide">
+                    Rule Engine
+                  </span>
+                  <span className="shrink-0 mt-0.5 text-[10px] font-bold text-blue-500 bg-blue-100 px-2 py-0.5 rounded">
+                    L1
+                  </span>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      키워드 매칭
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 mt-0.5">
+                      {l1Keywords.map((kw, i) => (
+                        <span
+                          key={i}
+                          className="bg-orange-100 text-orange-700 text-xs font-bold px-2.5 py-0.5 rounded-full border border-orange-200"
+                        >
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* L3 행 */}
+              {l3Phrases.length > 0 && (
+                <div className="flex items-start gap-3 px-6 py-4 border-b border-blue-100">
+                  <span className="shrink-0 mt-0.5 bg-purple-600 text-white text-[10px] font-black px-2 py-0.5 rounded tracking-wide">
+                    Judge
+                  </span>
+                  <span className="shrink-0 mt-0.5 text-[10px] font-bold text-purple-500 bg-purple-100 px-2 py-0.5 rounded">
+                    L3
+                  </span>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      문제 표현
+                    </span>
+                    <div className="flex flex-wrap gap-1.5 mt-0.5">
+                      {l3Phrases.map((ph, i) => (
+                        <span
+                          key={i}
+                          className="bg-red-50 text-red-600 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-red-200"
+                        >
+                          '{ph}'
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 판단 근거 행 */}
+              {reasoning && (
+                <div className="flex items-start gap-3 px-6 py-4">
+                  <Info size={15} className="text-blue-400 shrink-0 mt-0.5" />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                      판단 근거
+                    </span>
+                    <p className="text-sm text-gray-700 leading-relaxed">
+                      {reasoning}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* ── Before / After 2열 카드 ★ 디자인 변경 구간 ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12 text-left items-stretch">

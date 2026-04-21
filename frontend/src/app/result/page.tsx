@@ -6,11 +6,10 @@ import {
   AlertCircle,
   Info,
   ArrowLeft,
+  ShieldCheck,
   Scale,
-  BookOpen,
-  FileText,
-  ShieldAlert,
-  ChevronRight
+  CheckCircle2,
+  ChevronDown,
 } from "lucide-react";
 
 // --- 백엔드 연동용 유틸리티 ---
@@ -29,6 +28,7 @@ function toRiskLevel(verdict: string) {
 
 function buildOriginalChunks(copy: string, violations: any[]) {
   if (!copy) return [];
+  // 위반 정보를 청크에 담도록 타입 확장
   let chunks: { text: string; isError: boolean; violation?: any }[] = [
     { text: copy, isError: false },
   ];
@@ -55,6 +55,7 @@ function buildOriginalChunks(copy: string, violations: any[]) {
       }
       if (idx > 0)
         next.push({ text: chunk.text.slice(0, idx), isError: false });
+      // 에러 텍스트에 violation(에러 이유) 데이터 저장
       next.push({ text: phrase, isError: true, violation: v });
       if (idx + phrase.length < chunk.text.length) {
         next.push({
@@ -152,7 +153,11 @@ export default function ResultPage() {
       localStorage.setItem("adguard_user_id", user_id);
     }
 
-    const params = new URLSearchParams({ text, product_type: productType, user_id });
+    const params = new URLSearchParams({
+      text,
+      product_type: productType,
+      user_id,
+    });
     const es = new EventSource(`/api/analyze-stream?${params.toString()}`);
     esRef.current = es;
 
@@ -168,7 +173,9 @@ export default function ResultPage() {
 
       // 히스토리 누적 저장
       try {
-        const prev = JSON.parse(localStorage.getItem("adguard_history") || "[]");
+        const prev = JSON.parse(
+          localStorage.getItem("adguard_history") || "[]",
+        );
         const entry = {
           task_id: data.task_id || crypto.randomUUID(),
           verdict: data.final_verdict || "",
@@ -178,7 +185,10 @@ export default function ResultPage() {
           verified_rewrites: data.verified_rewrites || [],
         };
         prev.unshift(entry);
-        localStorage.setItem("adguard_history", JSON.stringify(prev.slice(0, 100)));
+        localStorage.setItem(
+          "adguard_history",
+          JSON.stringify(prev.slice(0, 100)),
+        );
       } catch {}
 
       sessionStorage.removeItem("analyzeText");
@@ -210,8 +220,6 @@ export default function ResultPage() {
     setResultData({
       riskLevel: toRiskLevel(backend.final_verdict),
       explanation: backend.explanation ?? "",
-      violations: violations,
-      legalGrounds: backend.retrieved_docs ?? [],
       spellCheck: { original: originalChunks },
       suggestions: rewrites.map((r: any, i: number) => ({
         id: i + 1,
@@ -248,77 +256,11 @@ export default function ResultPage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col items-center min-h-screen bg-white font-sans overflow-hidden pt-20 pb-10">
-        <div className="relative w-64 h-64 flex items-center justify-center mb-16">
-          <div className="absolute w-full h-full bg-blue-400/15 blur-[80px] animate-pulse"></div>
-          <div className="relative w-44 h-44 bg-gradient-to-tr from-blue-700 via-cyan-500 to-indigo-600 rounded-full animate-sphere-morph shadow-[inset_0_0_30px_rgba(255,255,255,0.3)]"></div>
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-[10px] font-black tracking-[0.4em] text-white/90 uppercase mb-2">
-              Processing
-            </span>
-            <div className="flex gap-1.5 items-center">
-              <span className="text-xl font-black text-white">분석 중...</span>
-            </div>
-          </div>
-        </div>
-        <div className="w-full max-w-6xl px-10">
-          <div className="text-center mb-12">
-            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
-              AI 광고 컴플라이언스 엔진 가동 중
-            </h2>
-            <p className="text-gray-500 mt-2 text-sm">
-              현재 단계: {analysisPhases[loadingStep].title} -{" "}
-              {analysisPhases[loadingStep].label}
-            </p>
-          </div>
-          <div className="flex flex-row justify-center items-stretch gap-4">
-            {analysisPhases.map((phase, index) => (
-              <div
-                key={index}
-                className={`flex-1 transition-all duration-700 p-6 rounded-[32px] border flex flex-col items-center text-center ${
-                  loadingStep === index
-                    ? "bg-blue-600 border-blue-400 scale-105 shadow-xl text-white"
-                    : loadingStep > index
-                      ? "bg-blue-50 border-blue-100 opacity-60"
-                      : "bg-gray-50 border-gray-100 opacity-30"
-                }`}
-              >
-                <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-black mb-4 ${
-                    loadingStep === index
-                      ? "bg-white text-blue-600"
-                      : "bg-blue-100 text-blue-600"
-                  }`}
-                >
-                  {loadingStep > index ? "✓" : index + 1}
-                </div>
-                <h4 className="font-bold text-xs mb-1">
-                  {phase.title} · {phase.label}
-                </h4>
-                {loadingStep === index && (
-                  <p
-                    className="text-[10px] mt-2 bg-white/10 p-2 rounded-xl animate-fade-in"
-                    dangerouslySetInnerHTML={{ __html: phase.detail }}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-        <style
-          dangerouslySetInnerHTML={{
-            __html: `
-          @keyframes sphereMorph {
-            0% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(0deg) scale(1); }
-            50% { border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%; transform: rotate(180deg) scale(1.1); }
-            100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; transform: rotate(360deg) scale(1); }
-          }
-          .animate-sphere-morph { animation: sphereMorph 8s ease-in-out infinite; }
-          .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; }
-          @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-        `,
-          }}
-        />
+      <div className="flex flex-col items-center min-h-screen bg-white pt-20">
+        <div className="w-44 h-44 bg-gradient-to-tr from-blue-700 to-indigo-600 rounded-full animate-pulse shadow-xl mb-10"></div>
+        <h2 className="text-2xl font-bold">
+          AI 분석 중... ({analysisPhases[loadingStep].title})
+        </h2>
       </div>
     );
   }
@@ -344,8 +286,6 @@ export default function ResultPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-12 px-6">
       <main className="w-full max-w-5xl bg-white rounded-[40px] shadow-sm border border-gray-100 p-8 md:p-14 relative overflow-hidden">
-
-        {/* 상단 타이틀 */}
         <div className="flex justify-between items-end mb-10 mt-6">
           <div>
             <span className="text-blue-600 font-bold text-xs tracking-widest uppercase mb-2 block">
@@ -358,123 +298,79 @@ export default function ResultPage() {
           <div
             className={`${riskBadge.bg} ${riskBadge.text} px-5 py-2 rounded-full font-bold border flex items-center gap-2`}
           >
-            <ShieldAlert size={16} /> {riskBadge.label}
+            <CheckCircle2 size={16} /> {riskBadge.label}
           </div>
         </div>
 
-        {/* 종합 판정 */}
         <div className="mb-10 p-6 bg-blue-50/30 rounded-3xl border flex gap-3 text-left">
           <Info size={18} className="text-blue-500 shrink-0 mt-1" />
-          <div>
-            <h4 className="font-bold text-blue-900 mb-1 text-sm">종합 분석 의견</h4>
-            <p className="text-sm text-gray-700 leading-relaxed">
-              {resultData.explanation}
-            </p>
-          </div>
+          <p className="text-sm text-gray-700 leading-relaxed">
+            {resultData.explanation}
+          </p>
         </div>
 
-        {/* Step 1: 원본 위반 하이라이트 */}
-        <div className="mb-12">
-          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
-            <span className="bg-red-500 text-white text-xs px-2 py-1 rounded-md">Step 1</span> 원본 문구 위반 하이라이트
-          </h3>
-          <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 text-left relative min-h-[160px]">
-            <div className="leading-relaxed text-lg text-zinc-600">
+        {/* Before/After 2열 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 text-left">
+          {/* Before */}
+          <div className="bg-zinc-50 rounded-[32px] p-8 border border-zinc-100 relative">
+            <span className="text-[10px] text-gray-400 font-bold bg-gray-200 px-2 py-0.5 rounded-sm mb-2 block w-fit">
+              AD
+            </span>
+            <div className="bg-red-500 text-white rounded-full px-4 py-1.5 w-fit mb-6 text-sm font-bold">
+              수정 전 위반 문구
+            </div>
+            <div className="h-48 overflow-y-auto leading-relaxed text-lg text-zinc-600 pr-2 pt-8">
               {resultData.spellCheck.original.map((chunk: any, i: number) =>
                 chunk.isError ? (
                   <span
                     key={i}
-                    className="relative inline-block mx-1 group cursor-help"
+                    className="relative inline-block mx-1 group cursor-help mt-4"
                   >
-                    <span className="text-red-600 font-extrabold bg-red-100 px-1.5 py-0.5 rounded-md underline decoration-red-500 underline-offset-4">
+                    {/* 위반 타입 라벨 */}
+                    <span className="absolute -top-6 left-0 bg-red-100 text-red-600 border border-red-200 text-[10px] font-black px-2 py-0.5 rounded shadow-sm whitespace-nowrap z-10 flex items-center gap-1">
+                      <AlertCircle size={10} />
+                      {chunk.violation?.type || "금지어/주의어"}
+                    </span>
+                    {/* 빨간색 물결 밑줄 */}
+                    <span className="text-red-600 font-extrabold underline decoration-red-500 decoration-wavy decoration-2 underline-offset-4">
                       {chunk.text}
                     </span>
-                    <span className="absolute bottom-full left-0 mb-4 hidden group-hover:block w-max max-w-xs bg-gray-800 text-white text-[10px] px-3 py-2 rounded-lg shadow-xl z-20">
-                      {chunk.violation?.explanation || "수정이 필요한 문구입니다."}
+                    {/* 호버 시 뜨는 상세 설명 */}
+                    <span className="absolute bottom-full left-0 mb-8 hidden group-hover:block w-max max-w-xs bg-gray-800 text-white text-xs px-3 py-2 rounded-lg shadow-xl z-20">
+                      {chunk.violation?.explanation ||
+                        "수정이 필요한 문구입니다."}
                     </span>
                   </span>
                 ) : (
                   <span key={i}>{chunk.text}</span>
-                )
+                ),
               )}
             </div>
           </div>
-        </div>
 
-        {/* 위반 상세 테이블 */}
-        {resultData.violations.length > 0 && (
-          <div className="mb-12">
-            <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
-              <AlertCircle className="text-red-500" size={24} /> 위반 상세 내역
-            </h3>
-            <div className="overflow-hidden border border-gray-200 rounded-2xl">
-              <table className="w-full text-left border-collapse">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-500 w-1/4">위반 문구</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-500 w-1/4">위반 유형</th>
-                    <th className="px-6 py-4 text-xs font-bold text-gray-500">상세 이유 및 가이드</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {resultData.violations.map((v: any, idx: number) => (
-                    <tr key={idx} className="hover:bg-red-50/30 transition-colors">
-                      <td className="px-6 py-4 text-sm font-bold text-red-600">{v.phrase || v.violation_word}</td>
-                      <td className="px-6 py-4 text-xs font-medium text-gray-600">
-                        <span className="bg-gray-100 px-2 py-1 rounded">{v.type || "표현 부적합"}</span>
-                      </td>
-                      <td className="px-6 py-4 text-xs text-gray-500 leading-relaxed">{v.explanation}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {/* After */}
+          <div className="bg-blue-50/30 rounded-[32px] p-8 relative border border-blue-100">
+            <div className="absolute top-6 right-8 text-[10px] font-black text-blue-300 tracking-widest uppercase">
+              After
             </div>
-          </div>
-        )}
-
-        {/* 법령 근거 */}
-        {resultData.legalGrounds.length > 0 && (
-          <div className="mb-12">
-            <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
-              <BookOpen className="text-blue-600" size={24} /> 관련 법령 및 근거 (L2 Retriever)
-            </h3>
-            <div className="grid grid-cols-1 gap-4 text-left">
-              {resultData.legalGrounds.map((doc: any, idx: number) => (
-                <div key={idx} className="p-5 bg-blue-50/50 border border-blue-100 rounded-2xl flex gap-4">
-                  <FileText className="text-blue-400 shrink-0" size={20} />
-                  <div>
-                    <div className="font-bold text-blue-900 text-sm mb-1">{doc.title || "화장품 광고 가이드라인"}</div>
-                    <div className="text-xs text-gray-600 leading-relaxed">{doc.content}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: AI 정화 완료 */}
-        <div className="mb-12">
-          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2 text-left">
-            <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded-md">Step 2</span> AI 정화 완료 카피
-          </h3>
-          <div className="bg-blue-50/30 rounded-[32px] p-8 relative border border-blue-100 text-left">
             <div className="bg-blue-600 text-white rounded-full px-4 py-1.5 w-fit mb-6 text-sm font-bold">
-              추천 최종안
+              AI 정화 완료
             </div>
             <textarea
               readOnly
               value={editedText}
-              className="w-full h-32 bg-white text-zinc-800 px-6 py-5 rounded-2xl font-bold shadow-sm resize-none outline-none leading-relaxed text-xl border border-blue-100"
+              className="w-full h-48 bg-white text-zinc-800 px-4 py-3 rounded-xl font-bold shadow-sm resize-none outline-none leading-relaxed text-lg pr-2 border border-blue-50"
             />
           </div>
         </div>
 
-        {/* 스타일별 제안 */}
         {resultData.suggestions.length > 0 && (
           <div className="mb-12 text-left">
             <h3 className="font-bold text-zinc-800 mb-6 flex items-center gap-2">
-              ✨ 스타일별 AI 교정 제안
-              <span className="text-sm font-normal text-zinc-400"> (클릭 시 복사) </span>
+              ✨ 다른 AI 교정 제안 둘러보기{" "}
+              <span className="text-sm font-normal text-zinc-400">
+                (클릭 시 복사 및 적용)
+              </span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {resultData.suggestions.map((item: any, index: number) => (
@@ -483,22 +379,19 @@ export default function ResultPage() {
                   onClick={() => {
                     navigator.clipboard.writeText(item.text);
                     setEditedText(item.text);
-                    alert("선택한 문구가 적용 및 복사되었습니다.");
                   }}
                   className="p-6 bg-white border rounded-[28px] hover:border-blue-200 hover:shadow-lg transition-all cursor-pointer flex flex-col justify-between h-full group"
                 >
-                  <div>
-                    <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-1 rounded uppercase tracking-wider mb-3 block w-fit">
-                      {item.tag}
-                    </span>
-                    <p className="text-sm text-zinc-700 font-bold leading-relaxed group-hover:text-blue-700">
-                      {item.text}
-                    </p>
-                  </div>
-                  <div className="flex items-center justify-end mt-4 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-[10px] font-bold mr-1">Apply</span>
-                    <ChevronRight size={14} />
-                  </div>
+                  <span className="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-md">
+                    {item.tag} 추천 문구 {index + 1}
+                  </span>
+                  <p className="mt-4 text-zinc-700 font-medium leading-relaxed group-hover:text-blue-700">
+                    {item.text}
+                  </p>
+                  <ChevronDown
+                    size={18}
+                    className="text-zinc-300 self-end mt-2"
+                  />
                 </div>
               ))}
             </div>

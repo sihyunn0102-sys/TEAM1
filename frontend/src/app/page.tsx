@@ -192,6 +192,16 @@ export default function Home() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] border border-gray-100 rounded-full -z-10" />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] border border-gray-50 rounded-full -z-10" />
       </section>
+
+      {/* 관리자 링크 (눈에 띄지 않게) */}
+      <div className="w-full py-4 text-center">
+        <Link
+          href="/admin"
+          className="text-xs text-gray-300 hover:text-gray-400 transition-colors"
+        >
+          관리자
+        </Link>
+      </div>
     </div>
   );
 }

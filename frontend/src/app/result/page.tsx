@@ -719,7 +719,7 @@ export default function ResultPage() {
               </h3>
             </div>
 
-{/* 텍스트 박스 */}
+            {/* 텍스트 박스 */}
             <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-red-100 flex-1">
               <p className="text-base leading-[2] italic">
                 {/* ★ 수정사항1: 안전 단계면 박스 비움 */}
@@ -730,32 +730,42 @@ export default function ResultPage() {
                 ) : resultData.spellCheck.original.length === 0 ? (
                   <span className="text-gray-300">원본 텍스트 없음</span>
                 ) : (
-                  resultData.spellCheck.original.map(
-                    (chunk: any, i: number) =>
-                      chunk.isError ? (
-                        <span key={i} className="inline-block">
-                          {/* 💡 a11y: 내레이터가 절대 건너뛰지 못하도록 강제 지정 */}
-                          <span 
-                            className="bg-red-100 text-red-600 font-extrabold not-italic px-1 py-0.5 rounded border-b-[3px] border-red-500 underline decoration-red-400 decoration-wavy underline-offset-2"
-                            role="text"
-                            aria-label={`위반 의심 단어, ${chunk.text}. 사유는 ${chunk.violation?.type || "위반어"}입니다.`}
-                          >
-                            <span aria-hidden="true">{chunk.text}</span>
-                          </span>
+                  resultData.spellCheck.original.map((chunk: any, i: number) =>
+                    chunk.isError ? (
+                      <span
+                        key={i}
+                        className="relative inline-block group cursor-help"
+                      >
+                        {/* 💡 a11y: 스크린 리더 강제 낭독 + 기존 빨간 디자인 유지 */}
+                        <span 
+                          className="bg-red-100 text-red-600 font-extrabold not-italic px-1 py-0.5 rounded border-b-[3px] border-red-500 underline decoration-red-400 decoration-wavy underline-offset-2"
+                          role="text"
+                          aria-label={`위반 의심 단어, ${chunk.text}. 사유는 ${chunk.violation?.type || "위반어"}입니다.`}
+                        >
+                          <span aria-hidden="true">{chunk.text}</span>
                         </span>
-                      ) : (
-                        // 일반 텍스트: 흐리게
-                        <span key={i} className="text-slate-400">
-                          {chunk.text}
+
+                        {/* 💡 호버 툴팁: explanation에서 파싱한 문장 표시 (유경님 코드 유지!) */}
+                        <span className="absolute bottom-full left-0 mb-2 hidden group-hover:flex items-start gap-1.5 w-56 bg-gray-900 text-white text-xs px-3 py-2 rounded-xl shadow-2xl z-20 not-italic font-normal leading-relaxed whitespace-normal">
+                          <AlertCircle
+                            size={12}
+                            className="shrink-0 mt-0.5 text-red-400"
+                          />
+                          {chunk.violation?.explanation ||
+                            chunk.violation?.type ||
+                            "법적으로 금지된 표현입니다."}
                         </span>
-                      )
+                      </span>
+                    ) : (
+                      // 일반 텍스트: 흐리게
+                      <span key={i} className="text-slate-400">
+                        {chunk.text}
+                      </span>
+                    )
                   )
                 )}
               </p>
             </div>
-
-            {/* ★ 수정사항1: 안전 단계면 하단 텍스트 숨김 */}
-            {resultData.riskLevel !== "Low" && (
 
             {/* ★ 수정사항1: 안전 단계면 하단 텍스트 숨김 */}
             {resultData.riskLevel !== "Low" && (

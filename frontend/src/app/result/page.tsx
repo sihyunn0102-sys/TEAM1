@@ -270,6 +270,7 @@ export default function ResultPage() {
     safeKeywordsUsed: string[];
   }>({ legalBasis: "", safeKeywordsUsed: [] });
   const esRef = useRef<EventSource | null>(null);
+  const startTimeRef = useRef<number>(0); 
 
   useEffect(() => {
     const text = sessionStorage.getItem("analyzeText");
@@ -300,6 +301,8 @@ export default function ResultPage() {
       localStorage.setItem("adguard_user_id", user_id);
     }
 
+    startTimeRef.current = Date.now(); 
+    
     const params = new URLSearchParams({
       text,
       product_type: productType,
@@ -317,6 +320,7 @@ export default function ResultPage() {
     es.addEventListener("result", (e: any) => {
       const data = JSON.parse(e.data);
       localStorage.setItem("adguard_result", JSON.stringify(data));
+      const totalMs = Date.now() - startTimeRef.current; 
 
       // 히스토리 누적 저장 ← 원본 유지
       try {
@@ -330,6 +334,7 @@ export default function ResultPage() {
           timestamp: new Date().toISOString(),
           text_preview: (data.copy || data.ad_copy || "").slice(0, 200),
           verified_rewrites: data.verified_rewrites || [],
+          _totalMs: totalMs,     
         };
         prev.unshift(entry);
         localStorage.setItem(

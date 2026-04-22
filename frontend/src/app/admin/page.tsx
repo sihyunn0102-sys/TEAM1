@@ -292,14 +292,24 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
 
   // localStorage에서 최근 분석 시간 읽기 (마운트 + 탭 포커스 시 갱신)
   const readLocalMs = () => {
-    try {
-      const raw = localStorage.getItem("adguard_result");
-      if (raw) {
-        const data = JSON.parse(raw);
-        if (data._totalMs != null) setLocalTotalMs(data._totalMs);
+  try {
+    const raw = localStorage.getItem("adguard_result");
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data._totalMs != null) { setLocalTotalMs(data._totalMs); return; }
+    }
+    // fallback: 히스토리 전체 평균 계산
+    const histRaw = localStorage.getItem("adguard_history");
+    if (histRaw) {
+      const hist = JSON.parse(histRaw);
+      const valid = hist.filter((e: any) => e._totalMs != null);
+      if (valid.length > 0) {
+        const avg = valid.reduce((sum: number, e: any) => sum + e._totalMs, 0) / valid.length;
+        setLocalTotalMs(Math.round(avg));
       }
-    } catch {}
-  };
+    }
+  } catch {}
+};
 
   useEffect(() => {
     readLocalMs();
@@ -314,6 +324,7 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
   const fetchStats = async () => {
     try {
       setLoading(true);
+      readLocalMs(); 
       const res = await fetch(`${BACKEND_URL}/admin/stats`, {
         headers: { "X-Admin-Password": password },
         cache: "no-store",

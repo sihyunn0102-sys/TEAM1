@@ -61,8 +61,11 @@ function LatencyMonitor({ latency, localTotalMs }: { latency: LatencyStats; loca
   const [history, setHistory] = useState<HistoryEntry[]>([]);
 
   const backendTotal = useMemo(() => Object.values(latency).reduce((acc, curr) => acc + (curr || 0), 0), [latency]);
-  const displayMs = backendTotal > 0 ? backendTotal * 1000 : (localTotalMs ?? 0);
-  const displayStr = displayMs >= 1000 ? `${(displayMs / 1000).toFixed(1)}s` : `${displayMs}ms`;
+  // 백엔드 latency는 보통 초 단위 — 100 미만이면 초 단위로 간주해서 ms로 변환
+  const displayMs = backendTotal > 0
+    ? (backendTotal < 100 ? backendTotal * 1000 : backendTotal)
+    : (localTotalMs ?? 0);
+  const displayStr = displayMs >= 1000 ? `${(displayMs / 1000).toFixed(1)}s` : `${Math.round(displayMs)}ms`;
 
   const handleOpen = () => {
     try {
@@ -320,9 +323,12 @@ function Dashboard({ password, onLogout }: { password: string; onLogout: () => v
 
   const filteredDaily = useMemo(() => {
     if (!stats?.daily_usage) return [];
-    const now = new Date();
-    const cutoff = new Date(now.setDate(now.getDate() - dayFilter)).toISOString().split('T')[0];
-    return stats.daily_usage.filter(d => d.date >= cutoff).sort((a,b) => a.date.localeCompare(b.date));
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - dayFilter);
+    const cutoff = cutoffDate.toISOString().split('T')[0];
+    return stats.daily_usage
+      .filter(d => d.date >= cutoff)
+      .sort((a, b) => a.date.localeCompare(b.date));
   }, [stats?.daily_usage, dayFilter]);
 
   return (

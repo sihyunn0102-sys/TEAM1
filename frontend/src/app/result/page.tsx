@@ -589,14 +589,15 @@ export default function ResultPage() {
             <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">
               분석 결과 리포트
             </h1>
-          </div>
-          <div
-            className={`${riskBadge.bg} ${riskBadge.text} px-5 py-2 rounded-full font-bold border flex items-center gap-2`}
-          >
-            <CheckCircle2 size={16} /> {riskBadge.label}
-          </div>
         </div>
-
+        <div
+          role="status" 
+          aria-label={`종합 위험도 판정 결과: ${riskBadge.label}`}
+          className={`${riskBadge.bg} ${riskBadge.text} px-5 py-2 rounded-full font-bold border flex items-center gap-2`}
+        >
+          <CheckCircle2 size={16} aria-hidden="true" /> {riskBadge.label}
+        </div>
+      </div>
         {/* ★ 설명 박스 - 구조화된 UI로 개편 */}
         {(() => {
           const { l1Keywords, l3Phrases, reasoning } = parseExplanation(
@@ -734,20 +735,21 @@ export default function ResultPage() {
                       chunk.isError ? (
                         // 수정2: 커서 기능(hover tooltip) 제거 - 하이라이트만 유지
                         <span key={i} className="inline-block">
+                          <span className="sr-only">
+                            [위반 의심 단어 시작: 사유 - {chunk.violation?.type || "위반어"}] 
+                          </span>
                           <span className="bg-red-100 text-red-600 font-extrabold not-italic px-1 py-0.5 rounded border-b-[3px] border-red-500 underline decoration-red-400 decoration-wavy underline-offset-2">
                             {chunk.text}
                           </span>
+
+                          <span className="sr-only"> [위반 단어 끝]</span>
                         </span>
                       ) : (
-                        // 일반 텍스트: 흐리게
+                        // 일반 텍스트: 흐리게 
                         <span key={i} className="text-slate-400">
                           {chunk.text}
                         </span>
                       ),
-                  )
-                )}
-              </p>
-            </div>
 
             {/* ★ 수정사항1: 안전 단계면 하단 텍스트 숨김 */}
             {resultData.riskLevel !== "Low" && (
@@ -821,18 +823,22 @@ export default function ResultPage() {
               </span>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {resultData.suggestions.map((item: any, index: number) => (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    navigator.clipboard.writeText(item.text);
-                    setEditedText(item.text);
+            {resultData.suggestions.map((item: any, index: number) => (
+                <div 
+                  key={item.id} 
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${item.tag} 스타일 추천 문구: ${item.text}. 클릭하거나 엔터 키를 눌러 복사 및 적용하기`}
+                  onClick={() => { navigator.clipboard.writeText(item.text); setEditedText(item.text); }}
+                  onKeyDown={(e) => { 
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      navigator.clipboard.writeText(item.text); setEditedText(item.text);
+                    }
                   }}
-                  className="p-6 bg-white border rounded-[28px] hover:border-blue-200 hover:shadow-lg transition-all cursor-pointer flex flex-col justify-between h-full group"
+                  className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-200 focus:ring-4 focus:ring-blue-300 focus:outline-none hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between h-full group"
                 >
-                  <span className="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-md w-fit">
-                    {item.tag} 추천 문구 {index + 1}
-                  </span>
+                  <span className="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-md w-fit">{item.tag} 추천 문구 {index + 1}</span>
                   <p className="mt-4 text-zinc-700 font-medium leading-relaxed group-hover:text-blue-700">
                     {item.text}
                   </p>

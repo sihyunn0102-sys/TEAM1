@@ -103,7 +103,7 @@ L1 · Rule Engine          (키워드·regex 필터, blocklist.yaml)
          ↓
 L2 · Retriever            (Azure AI Search 하이브리드)
          ↓
-L3 · Judge                (GPT-4.1, RAG 법 조항 직접 인용)
+L3 · Judge                (GPT-4o, RAG 법 조항 직접 인용)
          ↓
 L4 · Rewriter             (3스타일 수정안, 동적 few-shot)
          ↓

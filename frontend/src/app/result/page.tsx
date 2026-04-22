@@ -232,7 +232,7 @@ const analysisPhases = [
     title: "L3",
     label: "Judge",
     desc: "종합 판정",
-    detail: "GPT-4o 엔진 기반 심층 분석",
+    detail: "GPT-4.1 엔진 기반 심층 분석",
   },
   {
     title: "L4",

@@ -64,32 +64,35 @@ export default function AdminPage() {
 /**
  * 대시보드 메인 컴포넌트 (Props 타입 정의 추가)
  */
-function Dashboard({ password, onLogout }: { password: string; onLogout: () => void }) {
+function Dashboard({ password, onLogout }: any) {
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [dayFilter, setDayFilter] = useState<7 | 30>(7);
+  const [localTotalMs, setLocalTotalMs] = useState<number | null>(null);
 
-  const fetchStats = async () => {
+  const readLocalMs = () => {
     try {
-      setLoading(true);
-      const res = await fetch(`${BACKEND_URL}/admin/stats`, {
-        headers: { "X-Admin-Password": password },
-        cache: "no-store",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setStats(data);
+      const raw = localStorage.getItem("adguard_result");
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (data._totalMs != null) setLocalTotalMs(data._totalMs);
       }
-    } catch (e) {
-      console.error("통계 로드 실패:", e);
-    } finally {
-      setLoading(false);
-    }
+    } catch {}
   };
 
   useEffect(() => {
-    fetchStats();
+    readLocalMs();
+    document.addEventListener("visibilitychange", readLocalMs);
+    window.addEventListener("focus", readLocalMs);
+    return () => {
+      document.removeEventListener("visibilitychange", readLocalMs);
+      window.removeEventListener("focus", readLocalMs);
+    };
   }, []);
+
+  const fetchStats = async () => { ... };
+
+  useEffect(() => { fetchStats(); }, []);
 
   const filteredDaily = useMemo(() => {
     if (!stats?.daily_usage) return [];

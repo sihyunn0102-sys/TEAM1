@@ -735,17 +735,18 @@ export default function ResultPage() {
                       chunk.isError ? (
                         // 수정2: 커서 기능(hover tooltip) 제거 - 하이라이트만 유지
                         <span key={i} className="inline-block">
-                          <span className="sr-only">
-                            [위반 의심 단어 시작: 사유 - {chunk.violation?.type || "위반어"}] 
+                          {/* 💡 a11y: 내레이터가 절대 건너뛰지 못하도록 role="text"와 aria-label로 대본을 강제 지정합니다! */}
+                          <span 
+                            className="bg-red-100 text-red-600 font-extrabold not-italic px-1 py-0.5 rounded border-b-[3px] border-red-500 underline decoration-red-400 decoration-wavy underline-offset-2"
+                            role="text"
+                            aria-label={`위반 의심 단어, ${chunk.text}. 사유는 ${chunk.violation?.type || "위반어"}입니다.`}
+                          >
+                            {/* 화면에 보이는 실제 텍스트는 리더기가 중복해서 두 번 읽지 않도록 숨깁니다 */}
+                            <span aria-hidden="true">{chunk.text}</span>
                           </span>
-                          <span className="bg-red-100 text-red-600 font-extrabold not-italic px-1 py-0.5 rounded border-b-[3px] border-red-500 underline decoration-red-400 decoration-wavy underline-offset-2">
-                            {chunk.text}
-                          </span>
-
-                          <span className="sr-only"> [위반 단어 끝]</span>
                         </span>
                       ) : (
-                        // 일반 텍스트: 흐리게 
+                        // 일반 텍스트: 흐리게 (기존 코드 유지)
                         <span key={i} className="text-slate-400">
                           {chunk.text}
                         </span>
@@ -836,7 +837,7 @@ export default function ResultPage() {
                       navigator.clipboard.writeText(item.text); setEditedText(item.text);
                     }
                   }}
-                  className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-200 focus:ring-4 focus:ring-blue-300 focus:outline-none hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between h-full group"
+                  className="p-6 bg-white border border-zinc-100 rounded-[28px] hover:border-blue-200 focus:ring-4 focus:ring-blue-400 focus:outline-none hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between h-full group"
                 >
                   <span className="text-xs font-black text-blue-600 bg-blue-50 px-3 py-1 rounded-md w-fit">{item.tag} 추천 문구 {index + 1}</span>
                   <p className="mt-4 text-zinc-700 font-medium leading-relaxed group-hover:text-blue-700">

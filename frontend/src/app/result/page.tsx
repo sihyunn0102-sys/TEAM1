@@ -719,7 +719,7 @@ export default function ResultPage() {
               </h3>
             </div>
 
-            {/* 텍스트 박스 */}
+{/* 텍스트 박스 */}
             <div className="bg-white rounded-2xl px-5 py-4 shadow-sm border border-red-100 flex-1">
               <p className="text-base leading-[2] italic">
                 {/* ★ 수정사항1: 안전 단계면 박스 비움 */}
@@ -733,24 +733,29 @@ export default function ResultPage() {
                   resultData.spellCheck.original.map(
                     (chunk: any, i: number) =>
                       chunk.isError ? (
-                        // 수정2: 커서 기능(hover tooltip) 제거 - 하이라이트만 유지
                         <span key={i} className="inline-block">
-                          {/* 💡 a11y: 내레이터가 절대 건너뛰지 못하도록 role="text"와 aria-label로 대본을 강제 지정합니다! */}
+                          {/* 💡 a11y: 내레이터가 절대 건너뛰지 못하도록 강제 지정 */}
                           <span 
                             className="bg-red-100 text-red-600 font-extrabold not-italic px-1 py-0.5 rounded border-b-[3px] border-red-500 underline decoration-red-400 decoration-wavy underline-offset-2"
                             role="text"
                             aria-label={`위반 의심 단어, ${chunk.text}. 사유는 ${chunk.violation?.type || "위반어"}입니다.`}
                           >
-                            {/* 화면에 보이는 실제 텍스트는 리더기가 중복해서 두 번 읽지 않도록 숨깁니다 */}
                             <span aria-hidden="true">{chunk.text}</span>
                           </span>
                         </span>
                       ) : (
-                        // 일반 텍스트: 흐리게 (기존 코드 유지)
+                        // 일반 텍스트: 흐리게
                         <span key={i} className="text-slate-400">
                           {chunk.text}
                         </span>
-                      ),
+                      )
+                  )
+                )}
+              </p>
+            </div>
+
+            {/* ★ 수정사항1: 안전 단계면 하단 텍스트 숨김 */}
+            {resultData.riskLevel !== "Low" && (
 
             {/* ★ 수정사항1: 안전 단계면 하단 텍스트 숨김 */}
             {resultData.riskLevel !== "Low" && (

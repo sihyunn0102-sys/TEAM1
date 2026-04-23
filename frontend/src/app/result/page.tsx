@@ -220,7 +220,7 @@ const analysisPhases = [
     title: "L1",
     label: "Rule Engine",
     desc: "금지어 즉시 식별",
-    detail: "블랙리스트 기반 점검",
+    detail: "금지 표현 목록 기반 점검",
   },
   {
     title: "L2",
@@ -445,7 +445,7 @@ export default function ResultPage() {
       suggestions: rewrites.map((r: any, i: number) => ({
         id: i + 1,
         text: r.text,
-        tag: STYLE_LABELS[r.style] ?? r.style,
+        tag: STYLE_LABELS[r.style] ?? ["가장 안전 🟢", "자연스러움 🟡", "마케팅 강조 🔵"][i] ?? "추천",
       })),
     });
   }

@@ -208,12 +208,6 @@ function parseExplanation(explanation: string): {
   return { l1Keywords, l3Phrases, reasoning };
 }
 
-const STYLE_LABELS: Record<string, string> = {
-  safe: "가장 안전 🟢",
-  marketing: "자연스러움 🟡",
-  functional: "마케팅 강조 🔵",
-};
-
 // ★ 원본 그대로 유지 (desc 필드 포함)
 const analysisPhases = [
   {
@@ -445,7 +439,6 @@ export default function ResultPage() {
       suggestions: rewrites.map((r: any, i: number) => ({
         id: i + 1,
         text: r.text,
-        tag: STYLE_LABELS[r.style] ?? ["가장 안전 🟢", "자연스러움 🟡", "마케팅 강조 🔵"][i] ?? "추천",
       })),
     });
   }

@@ -1,13 +1,14 @@
 """
-L4 Rewriter — 동적 Few-shot 기반 광고 카피 수정안 생성기
+L4 Rewriter — 동적 Few-shot 기반 광고 카피 수정안 생성기 (GPT-4.1, D6+)
 
-입력: 원본 카피 + L3 Judge 결과 (verdict, violations, legal_basis)
-출력: safe / marketing / functional 3스타일 수정안
+입력: 원본 카피 + L3 Judge 결과 (verdict, violations, legal_basis, optimization_hints)
+출력: 수정안 3개 (스타일 라벨 없음, D6부터 제거)
 
 핵심:
   - FewshotSelector로 원본 카피와 유사한 사례 동적 선별
   - 선별된 Few-shot을 프롬프트에 실시간 주입
-  - GPT-4o JSON 모드로 구조화된 수정안 생성
+  - GPT-4.1 JSON 모드로 구조화된 수정안 생성
+  - D12: L3 optimization_hints를 전략 브리핑으로 주입 + 수치 환각 sanitize
 """
 from __future__ import annotations
 import os
@@ -28,37 +29,100 @@ CERTIFICATION_NO_PATTERN = re.compile(
     r"제?\s*\d{4}\s*[-–]\s*\d{4,5}\s*호?"
 )
 
+# D12: 창작 수치 환각 방지 패턴
+# "97% 만족", "92%가 느꼈", "N% 개선" 류
+SATISFACTION_PATTERN = re.compile(
+    r"(\d{1,3}(?:\.\d+)?)\s*%\s*(?:가|이|는|은)?\s*"
+    r"(만족|느꼈|체감|개선|응답|경험|효과|인식|동의|상승|감소|증가|하였|했)"
+)
+# "n=30", "n=200", "n = 50" 류 표본 수
+SAMPLE_N_PATTERN = re.compile(
+    r"n\s*=\s*\d{1,4}",
+    re.IGNORECASE,
+)
+# "4주 후", "8주차", "12주간" 류 임상 기간
+CLINICAL_WEEK_PATTERN = re.compile(
+    r"\d+\s*주\s*(?:후|차|간|째)"
+)
 
-def sanitize_rewrite_text(text: str, certification_no: str | None) -> str:
+
+def sanitize_rewrite_text(
+    text: str,
+    certification_no: str | None,
+    original_copy: str = "",
+    claims_data_provided: bool = False,
+) -> str:
     """
-    L4 출력에서 심사번호 환각 제거.
+    L4 출력에서 환각 수치·식별자 제거.
 
-    - context.certification_no가 없는데 GPT가 심사번호 지어내면 → 플레이스홀더
-    - context.certification_no가 있는데 다른 번호가 나오면 → 실제 번호로 치환
+    1) 심사번호 환각 방지 (기존)
+       - context.certification_no가 없는데 GPT가 심사번호 지어냄 → 플레이스홀더
+       - context.certification_no가 있는데 다른 번호가 나옴 → 실제 번호로 치환
+
+    2) D12 신규: 창작 수치 환각 방지
+       - 원본 카피에 없고 사용자 시험 데이터도 없는 경우:
+         "97% 만족", "n=200", "4주 후" 등 구체 수치를 플레이스홀더로 치환
 
     Args:
         text: L4가 생성한 수정안 텍스트
         certification_no: 사용자가 제공한 정확한 심사번호
+        original_copy: 원본 광고 카피 (원본에 이미 있던 수치는 허용)
+        claims_data_provided: 사용자가 실제 인체적용시험/설문 데이터를 제공했는지
 
     Returns:
         환각이 제거·치환된 텍스트
     """
-    matches = CERTIFICATION_NO_PATTERN.findall(text)
-    if not matches:
+    # ────────────────────────────
+    # 1) 심사번호 (기존 로직)
+    # ────────────────────────────
+    cert_matches = CERTIFICATION_NO_PATTERN.findall(text)
+    if cert_matches:
+        if not certification_no:
+            for match in cert_matches:
+                text = text.replace(match, "[기능성화장품 심사번호 확인 필요]")
+        else:
+            normalized_cert = certification_no.replace(" ", "").replace("-", "")
+            for match in cert_matches:
+                normalized_match = match.replace(" ", "").replace("-", "")
+                if (
+                    normalized_match not in normalized_cert
+                    and normalized_cert not in normalized_match
+                ):
+                    text = text.replace(match, certification_no)
+
+    # ────────────────────────────
+    # 2) D12: 창작 수치 환각 방지
+    # ────────────────────────────
+    # 사용자가 실제 시험 데이터를 제공했으면 통과 (수치가 맞는지는 사용자 책임)
+    if claims_data_provided:
         return text
 
-    if not certification_no:
-        # 사용자가 심사번호 제공 안 했는데 GPT가 지어냄 → 제거
-        for match in matches:
-            text = text.replace(match, "[기능성화장품 심사번호 확인 필요]")
-        return text
+    # 원본 카피에 있던 수치는 보존 (단순히 원본 문자열 안에 등장하는지 확인)
+    def _is_in_original(sub: str) -> bool:
+        return sub in original_copy
 
-    # 사용자가 준 심사번호가 있는데 다른 번호가 나옴 → 치환
-    normalized_cert = certification_no.replace(" ", "").replace("-", "")
-    for match in matches:
-        normalized_match = match.replace(" ", "").replace("-", "")
-        if normalized_match not in normalized_cert and normalized_cert not in normalized_match:
-            text = text.replace(match, certification_no)
+    # 2-a) "97% 만족", "92%가 느꼈" 류
+    for match in list(SATISFACTION_PATTERN.finditer(text)):
+        full = match.group(0)
+        pct = match.group(1) + "%"
+        if _is_in_original(pct):
+            continue  # 원본에 이미 있던 수치 → 통과
+        # 수치만 [수치 확인 필요]로 치환, 나머지 문맥은 유지
+        text = text.replace(pct, "[설문 수치 확인 필요]", 1)
+
+    # 2-b) "n=30", "n=200" 류
+    for match in list(SAMPLE_N_PATTERN.finditer(text)):
+        full = match.group(0)
+        if _is_in_original(full):
+            continue
+        text = text.replace(full, "[표본수 확인 필요]", 1)
+
+    # 2-c) "4주 후", "8주차" 류 임상 기간 (원본에 없는 경우만)
+    for match in list(CLINICAL_WEEK_PATTERN.finditer(text)):
+        full = match.group(0)
+        if _is_in_original(full):
+            continue
+        text = text.replace(full, "[시험 기간 확인 필요]", 1)
 
     return text
 
@@ -67,7 +131,7 @@ PROMPT_DIR = Path(__file__).resolve().parent.parent / "prompts" / "rewriter"
 
 
 class Rewriter:
-    """L4 Rewriter — 동적 Few-shot + GPT-4o 기반 수정안 생성."""
+    """L4 Rewriter — 동적 Few-shot + GPT-4.1 기반 수정안 생성 (D6+)."""
 
     def __init__(
         self,
@@ -82,9 +146,13 @@ class Rewriter:
         self.client = AzureOpenAI(
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
         )
-        self.deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+        # D6부터 gpt-4.1 기본값. L4 전용 배포가 있으면 우선, 없으면 공용 배포
+        self.deployment = (
+            os.getenv("AZURE_OPENAI_DEPLOYMENT_REWRITER")
+            or os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1")
+        )
 
         prompt_path = PROMPT_DIR / f"{prompt_version}.txt"
         self.base_prompt = prompt_path.read_text(encoding="utf-8")
@@ -118,6 +186,20 @@ class Rewriter:
         suggested = judge_result.get("suggested_next_step", "")
         if suggested:
             lines.append(f"**L3 수정 힌트**: {suggested}")
+            lines.append("")
+
+        # D12: L3가 RAG 기반으로 도출한 전략 힌트(optimization_hints) 주입
+        # L4는 이 전략을 "참고"로만 사용하고, 3개 수정안에 골고루 반영
+        hints = judge_result.get("optimization_hints", []) or []
+        if hints:
+            lines.append("**L3 전략 가이드 (RAG 기반, 반드시 참고)**:")
+            for i, h in enumerate(hints, 1):
+                lines.append(f"  {i}. {h}")
+            lines.append("")
+            lines.append(
+                "→ 위 3개 전략 중 **최소 2개**를 3개 수정안에 분배해서 반영. "
+                "단, 전략을 글자 그대로 복사하지 말고 실제 카피 문장으로 구체화할 것."
+            )
 
         return "\n".join(lines)
 
@@ -206,17 +288,24 @@ JSON 스키마대로만 응답하세요."""
             ],
             response_format={"type": "json_object"},
             temperature=0.3,  # 다양성 약간 허용 (safe는 0.1, L4는 창의성 필요)
-            max_tokens=1200,
+            max_completion_tokens=1200,
         )
 
         content = response.choices[0].message.content
         result = json.loads(content)
 
-        # 환각 방지 — 수정안 텍스트에서 가짜 심사번호 제거·치환 (코드 레벨 이중 방어)
+        # 환각 방지 — 수정안 텍스트에서 가짜 심사번호·창작 수치 제거 (코드 레벨 이중 방어)
         cert_no = context.certification_no if context is not None else None
+        # 사용자가 실제 시험 데이터를 제공했는지 판단 (ProductContext 확장 필드)
+        claims_data = getattr(context, "has_clinical_data", False) if context is not None else False
         for suggestion in result.get("rewrite_suggestions", []):
             original_text = suggestion.get("text", "")
-            sanitized_text = sanitize_rewrite_text(original_text, cert_no)
+            sanitized_text = sanitize_rewrite_text(
+                original_text,
+                cert_no,
+                original_copy=copy,
+                claims_data_provided=claims_data,
+            )
             if sanitized_text != original_text:
                 suggestion["text"] = sanitized_text
                 suggestion["sanitized"] = True  # 치환 발생 마킹

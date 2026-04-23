@@ -1,149 +1,46 @@
 """
-L5 Re-Judge — L4 수정안 재검증 루프
+L5 Re-Judge Medium — L1 바이너리 필터 + L3-lite 의미 재판정 (D12 C-lite Hotfix2+)
 
-입력: 원본 카피 + L3 결과 + L4 수정안 3개
-처리:
-  1. 각 수정안을 L3 Judge(grounded)에 재투입
-  2. safe가 아니면 L4에 "재수정 요청" (최대 max_retries회)
-  3. 최종 safe 통과 수정안만 반환
+설계 배경:
+    D12 C-lite 초기 버전(L1 바이너리만으로 L5)에서 **L4 수정안 재투입 시 caution 뜨는 문제** 발견.
+    마케터가 L4 수정안을 복사해서 다시 AdGuard에 넣으면 원문 판정과 다른 verdict가 나올 수 있음
+    → "통과"라고 보증한 수정안의 신뢰도 훼손.
 
-출력:
-  - verified_suggestions: [3스타일 × 최종 verdict]
-  - retry_stats: 재시도 횟수 기록
-  - all_safe: 3개 모두 safe 통과 여부
+    근본 원인: L1 바이너리는 hard_block만 체크 → 수정안 내부 caution 경계어(기능성 효능 암시,
+    경계 표현)는 감지 못함. 재판정 시 L3가 맥락 보고 caution 줌.
+
+    해결 (L5-medium): 수정안 3개를 L3-lite로 재판정하되 **L2(RAG)는 원문 판정 때 가져온 chunks 재사용**.
+    추가 L2 호출 0회, L3-lite 3회 호출로 의미적 일관성 보장.
+
+status 4-state (D12 C-lite 초기 버전에서 3-state로 줄였다가 Hotfix2에서 4-state로 복원):
+    - "passed"              — L1 clean + L3-lite safe: 즉시 사용 가능
+    - "passed_with_warning" — L1 clean + L3-lite caution: 사용 가능하나 맥락·실증 보강 권장
+    - "blocked"             — L1 hard_block 또는 L3-lite hard_block: 사용 비권장
+    - "failed"              — 빈 텍스트, 호출 에러 등
+
+비용 영향:
+    - L3-lite 호출 추가: 수정안 1건당 약 +500~800 토큰
+    - 전체 건당 약 +30~50% 토큰
+    - 단, blocked 판정은 L1만으로 결정되므로 L3-lite 스킵 → hard_block 많은 데모에선 증가폭 작음
 """
 from __future__ import annotations
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 
 class ReJudge:
-    """L5 Re-Judge — L4 수정안 재검증 + 재시도 루프."""
+    """L5-medium (D12 Hotfix2) — L1 바이너리 + L3-lite 재판정 (병렬)."""
 
-    def __init__(
-        self,
-        retriever,
-        judge,
-        rewriter,
-        max_retries: int = 2,
-        parallel: bool = True,
-    ):
+    def __init__(self, rule_engine, judge=None, max_parallel: int = 3, **_kwargs):
         """
         Args:
-            retriever: L2 Retriever
-            judge: L3 Judge (grounded)
-            rewriter: L4 Rewriter
-            max_retries: 실패 시 L4 재요청 최대 횟수 (기본 2)
-            parallel: 3개 수정안을 병렬 재판정 (기본 True)
-                - True: ThreadPoolExecutor로 동시 호출 → ~5초
-                - False: 순차 호출 → ~15초
+            rule_engine: L1 RuleEngine 인스턴스 (hard_block 체크용)
+            judge: L3 Judge 인스턴스 (judge_lite() 호출용). None이면 L5-lite로 폴백.
+            max_parallel: L3-lite 동시 호출 수 (기본 3 = 수정안 3개 병렬)
         """
-        self.retriever = retriever
-        self.judge = judge
-        self.rewriter = rewriter
-        self.max_retries = max_retries
-        self.parallel = parallel
-
-    def _rejudge_single(self, text: str, context=None) -> dict:
-        """단일 수정안을 L3에 재투입 (동일 제품 컨텍스트로)."""
-        retrieval = self.retriever.retrieve(text, top_k=5)
-        result = self.judge.judge(text, retrieval["chunks"], context=context)
-        return {
-            "verdict": result.get("verdict"),
-            "confidence": result.get("confidence", 0),
-            "violations": result.get("violations", []),
-            "matched_phrase": result.get("matched_phrase"),
-            "law_citation": result.get("law_citation"),
-        }
-
-    def _verify_one_suggestion(
-        self,
-        original_copy: str,
-        suggestion: dict,
-        context=None,
-    ) -> dict:
-        """
-        단일 수정안 1개를 검증 (재판정 + 재시도 루프).
-
-        이 메서드를 ThreadPoolExecutor로 3개 동시 호출하면
-        전체 L5 시간이 15초 → 5초로 단축.
-        """
-        style = suggestion.get("style", "?")
-        current_text = suggestion.get("text", "")
-        history = []
-        local_retries = 0
-
-        if not current_text:
-            return {
-                "style": style,
-                "text": "",
-                "verdict": "empty",
-                "retry_count": 0,
-                "status": "failed",
-                "history": [],
-                "retries_used": 0,
-            }
-
-        retry = 0
-        while True:
-            rejudge = self._rejudge_single(current_text, context=context)
-            verdict = rejudge["verdict"]
-            history.append({
-                "text": current_text,
-                "verdict": verdict,
-                "retry": retry,
-            })
-
-            if verdict == "safe":
-                return {
-                    "style": style,
-                    "text": current_text,
-                    "verdict": "safe",
-                    "retry_count": retry,
-                    "status": "passed",
-                    "history": history,
-                    "matched_phrase": rejudge.get("matched_phrase"),
-                    "law_citation": rejudge.get("law_citation"),
-                    "retries_used": local_retries,
-                }
-
-            if retry >= self.max_retries:
-                return {
-                    "style": style,
-                    "text": current_text,
-                    "verdict": verdict,
-                    "retry_count": retry,
-                    "status": "failed",
-                    "history": history,
-                    "failure_reason": (
-                        f"max_retries({self.max_retries}) 초과. "
-                        f"최종 L3 verdict: {verdict}"
-                    ),
-                    "retries_used": local_retries,
-                }
-
-            retry += 1
-            local_retries += 1
-            current_text = self._request_rewrite(
-                original_copy=original_copy,
-                failed_text=current_text,
-                failed_verdict=verdict,
-                rejudge_info=rejudge,
-                style=style,
-                retry=retry,
-            )
-
-            if not current_text:
-                return {
-                    "style": style,
-                    "text": "",
-                    "verdict": "retry_failed",
-                    "retry_count": retry,
-                    "status": "failed",
-                    "history": history,
-                    "failure_reason": "L4 재생성 실패",
-                    "retries_used": local_retries,
-                }
+        self.rule_engine = rule_engine
+        self.judge = judge  # None이면 L5-lite 모드 (L1만 체크)
+        self.max_parallel = max_parallel
 
     def verify(
         self,
@@ -151,177 +48,153 @@ class ReJudge:
         l3_result: dict,
         l4_result: dict,
         context=None,
+        l2_chunks: list[dict] | None = None,
     ) -> dict:
         """
-        L4 수정안 3개를 L3에 재투입하여 검증 (기본 병렬).
+        L4 수정안 3개를 L5-medium으로 재검증.
 
         Args:
-            original_copy: 원본 카피
-            l3_result: L3 Judge 결과 (verdict, violations 등)
+            original_copy: 원문 (참고용, 현 구현에선 미사용)
+            l3_result: 원문 L3 판정 결과 (참고용)
             l4_result: L4 Rewriter 결과 (rewrite_suggestions 포함)
-
-        Returns:
-            {
-              "verified_suggestions": [
-                {"style": "safe", "text": "...", "verdict": "safe", ...},
-                ...
-              ],
-              "all_safe": True,
-              "total_retries": 0,
-              "latency_ms": 5000,
-              "mode": "parallel" | "sequential"
-            }
+            context: ProductContext (L3-lite에 주입)
+            l2_chunks: 원문 판정 때 쓴 L2 RAG chunks (L3-lite 재판정에 재사용).
+                       None이면 L3-lite가 빈 컨텍스트로 판정 (품질 저하 가능).
         """
         start = time.perf_counter()
         suggestions = l4_result.get("rewrite_suggestions", [])
 
-        if self.parallel and len(suggestions) > 1:
-            # 병렬 실행 — ThreadPoolExecutor로 3개 동시
-            verified = [None] * len(suggestions)
-            with ThreadPoolExecutor(max_workers=len(suggestions)) as executor:
-                future_to_idx = {
-                    executor.submit(self._verify_one_suggestion, original_copy, s, context): i
-                    for i, s in enumerate(suggestions)
-                }
-                for future in as_completed(future_to_idx):
-                    idx = future_to_idx[future]
-                    try:
-                        verified[idx] = future.result()
-                    except Exception as e:
-                        print(f"  [L5] 병렬 처리 실패 idx={idx}: {e}")
-                        verified[idx] = {
-                            "style": suggestions[idx].get("style", "?"),
-                            "text": suggestions[idx].get("text", ""),
-                            "verdict": "error",
-                            "retry_count": 0,
-                            "status": "failed",
-                            "failure_reason": str(e),
-                            "retries_used": 0,
-                        }
-            mode = "parallel"
-        else:
-            # 순차 실행 (기존 방식)
-            verified = [
-                self._verify_one_suggestion(original_copy, s, context=context)
-                for s in suggestions
-            ]
-            mode = "sequential"
+        # ─── Step 1: L1 hard_block 체크를 모든 수정안에 먼저 적용 (빠름, 순차) ───
+        # L1은 로컬 regex라 매우 빠름 → 병렬화 불필요.
+        # 여기서 blocked 처리된 건은 L3-lite 호출 대상에서 제외하여 비용 절감.
+        pre_verified: list[dict | None] = []  # 최종 결과 placeholder
+        pending_for_l3: list[tuple[int, dict]] = []  # (index, suggestion)
 
-        total_retries = sum(v.get("retries_used", 0) for v in verified)
+        for idx, s in enumerate(suggestions):
+            text = s.get("text", "")
+            style = s.get("style", "?")
+
+            if not text:
+                pre_verified.append({
+                    "style": style,
+                    "text": "",
+                    "verdict": "empty",
+                    "retry_count": 0,
+                    "status": "failed",
+                })
+                continue
+
+            l1_check = self.rule_engine.check(text)
+            if l1_check["verdict"] == "hard_block":
+                matched = [
+                    m.get("keyword") or m.get("matched", "?")
+                    for m in l1_check.get("matched_keywords", [])[:3]
+                ]
+                pre_verified.append({
+                    "style": style,
+                    "text": text,
+                    "verdict": "hard_block",
+                    "retry_count": 0,
+                    "status": "blocked",
+                    "warning": f"L1 금지어 잔류: {', '.join(matched)}",
+                    "rejudge_source": "l1",
+                })
+                continue
+
+            # L1 clean → L3-lite 대기열에 넣음 (judge 있을 때만)
+            if self.judge is None:
+                # L5-lite 폴백 (judge 미주입 → L1 clean이면 passed)
+                pre_verified.append({
+                    "style": style,
+                    "text": text,
+                    "verdict": "safe",
+                    "retry_count": 0,
+                    "status": "passed",
+                    "rejudge_source": "l1_only",
+                })
+                continue
+
+            # 자리 예약 후 L3-lite 병렬 호출 대기열에 추가
+            pre_verified.append(None)
+            pending_for_l3.append((idx, s))
+
+        # ─── Step 2: L3-lite를 pending 건에 대해 병렬 호출 (ThreadPoolExecutor) ───
+        total_rejudge_tokens = 0
+        if pending_for_l3 and self.judge is not None:
+            def _run_lite(idx_sugg: tuple[int, dict]) -> tuple[int, dict]:
+                idx, s = idx_sugg
+                text = s.get("text", "")
+                style = s.get("style", "?")
+                try:
+                    lite = self.judge.judge_lite(
+                        rewrite_text=text,
+                        rag_chunks=l2_chunks or [],
+                        context=context,
+                    )
+                    lite_verdict = lite.get("verdict", "safe")
+                    lite_usage = lite.get("usage", {}).get("total_tokens", 0)
+
+                    entry: dict = {
+                        "style": style,
+                        "text": text,
+                        "verdict": lite_verdict,
+                        "retry_count": 0,
+                        "rejudge_source": "l3_lite",
+                        "rejudge_tokens": lite_usage,
+                    }
+
+                    if lite_verdict == "safe":
+                        entry["status"] = "passed"
+                    elif lite_verdict == "caution":
+                        entry["status"] = "passed_with_warning"
+                        lite_reasoning = lite.get("reasoning", "")
+                        entry["note"] = (
+                            f"L3 재판정 결과 경계 판정. 맥락·실증 보강 권장. "
+                            f"사유: {lite_reasoning[:120]}"
+                        )
+                        lite_viols = lite.get("violations") or []
+                        if lite_viols:
+                            v = lite_viols[0]
+                            entry["caution_phrase"] = v.get("phrase", "")
+                            entry["caution_type"] = v.get("type", "")
+                    else:  # hard_block
+                        entry["status"] = "blocked"
+                        entry["warning"] = (
+                            f"L3 재판정 결과 hard_block. "
+                            f"사유: {lite.get('reasoning', '')[:120]}"
+                        )
+                    return idx, entry
+                except Exception as e:
+                    return idx, {
+                        "style": style,
+                        "text": text,
+                        "verdict": "unknown",
+                        "retry_count": 0,
+                        "status": "failed",
+                        "warning": f"L3 재판정 호출 실패: {type(e).__name__}",
+                        "rejudge_source": "l3_lite_error",
+                    }
+
+            # 병렬 실행
+            with ThreadPoolExecutor(max_workers=self.max_parallel) as executor:
+                for idx, entry in executor.map(_run_lite, pending_for_l3):
+                    pre_verified[idx] = entry
+                    total_rejudge_tokens += entry.get("rejudge_tokens", 0)
+
+        verified = [v for v in pre_verified if v is not None]
+
         latency_ms = (time.perf_counter() - start) * 1000
-        all_safe = all(v["status"] == "passed" for v in verified)
+
+        # 집계 플래그
+        all_safe = all(v["status"] != "blocked" and v["status"] != "failed" for v in verified)
+        all_clean = all(v["status"] == "passed" for v in verified)
 
         return {
             "verified_suggestions": verified,
             "all_safe": all_safe,
-            "total_retries": total_retries,
+            "all_clean": all_clean,
+            "total_retries": 0,
             "latency_ms": round(latency_ms),
-            "mode": mode,
+            "rejudge_tokens": total_rejudge_tokens,
+            "mode": "medium_d12_hotfix2" if self.judge is not None else "lite_binary",
         }
-
-    def _request_rewrite(
-        self,
-        original_copy: str,
-        failed_text: str,
-        failed_verdict: str,
-        rejudge_info: dict,
-        style: str,
-        retry: int,
-    ) -> str:
-        """
-        L4에 재수정 요청.
-
-        실패한 수정안과 그 이유를 담아 L4에 다시 호출.
-        반환: 새로운 수정안 텍스트 (해당 style만 추출).
-        """
-        # L3 재판정 정보를 가짜 judge_result로 포장
-        pseudo_judge = {
-            "verdict": failed_verdict,
-            "confidence": rejudge_info.get("confidence", 0.8),
-            "violations": rejudge_info.get("violations", []),
-            "legal_basis": (
-                [rejudge_info.get("law_citation")]
-                if rejudge_info.get("law_citation")
-                else []
-            ),
-            "suggested_next_step": (
-                f"이전 수정안 '{failed_text}'이 {failed_verdict} 판정을 받음. "
-                f"매칭 조항: {rejudge_info.get('matched_phrase') or '(없음)'}. "
-                f"해당 표현을 완전히 제거하고 {style} 스타일로 다시 작성."
-            ),
-        }
-
-        try:
-            new_l4 = self.rewriter.rewrite(
-                failed_text,  # 이전 수정안을 원본으로 취급
-                pseudo_judge,
-                top_k_cases=3,
-            )
-        except Exception as e:
-            print(f"  [L5] L4 재호출 실패 (retry={retry}): {e}")
-            return ""
-
-        # 해당 style만 추출
-        for s in new_l4.get("rewrite_suggestions", []):
-            if s.get("style") == style:
-                return s.get("text", "")
-
-        # style이 안 나왔으면 첫 번째 사용
-        if new_l4.get("rewrite_suggestions"):
-            return new_l4["rewrite_suggestions"][0].get("text", "")
-
-        return ""
-
-
-# ============== 데모 ==============
-if __name__ == "__main__":
-    import sys
-    from pathlib import Path
-
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-    from retriever import Retriever
-    from judge import Judge
-    from l4_rewriter import Rewriter
-
-    print("L5 Re-Judge 테스트\n")
-
-    retriever = Retriever()
-    judge = Judge(prompt_version="grounded")
-    rewriter = Rewriter(retriever, prompt_version="v3_dynamic")
-    rejudge = ReJudge(retriever, judge, rewriter, max_retries=2)
-
-    test_copies = [
-        "바르는 보톡스 크림으로 14일 만에 피부가 부활합니다",
-        "원데이 엑소좀 샷 앰플 — 세포 차원의 혁명",
-        "98% 보송함, 완벽한 피부 변화",
-    ]
-
-    for copy in test_copies:
-        print("=" * 70)
-        print(f"📝 원본: \"{copy}\"")
-
-        # L2 → L3 → L4
-        retrieval = retriever.retrieve(copy, top_k=5)
-        l3 = judge.judge(copy, retrieval["chunks"])
-        print(f"⚖️ L3: {l3['verdict']}")
-
-        l4 = rewriter.rewrite(copy, l3)
-        print(f"✍️ L4: {len(l4['rewrite_suggestions'])}개 수정안 생성")
-        for s in l4["rewrite_suggestions"]:
-            print(f"   [{s['style']}] {s['text']}")
-
-        # L5
-        print(f"\n🔍 L5 Re-Judge 시작...")
-        l5 = rejudge.verify(copy, l3, l4)
-
-        print(f"\n✅ 재검증 결과 ({l5['latency_ms']}ms, 재시도 {l5['total_retries']}회)")
-        print(f"   all_safe: {l5['all_safe']}")
-        for v in l5["verified_suggestions"]:
-            emoji = "✅" if v["status"] == "passed" else "❌"
-            print(f"   {emoji} [{v['style']}] {v['verdict']} (retry {v['retry_count']})")
-            print(f"      \"{v['text']}\"")
-            if v["status"] == "failed":
-                print(f"      ⚠ {v.get('failure_reason', '')}")
-        print()

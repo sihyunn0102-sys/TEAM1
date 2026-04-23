@@ -12,8 +12,11 @@ AdGuard Cascade Pipeline — L1 → L2 → L3 연결
 """
 from __future__ import annotations
 import sys
+import os
 import time
 import json
+import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 
 # 같은 폴더 모듈 import
@@ -26,8 +29,67 @@ from l5_rejudge import ReJudge
 from product_context import ProductContext, ProductType
 
 
+# ═══════════════════ 응답 캐시 설정 ═══════════════════
+# JSON으로 저장 (pickle 금지 — untrusted content deserialization 위험)
+_ROOT = Path(__file__).resolve().parent.parent
+_CACHE_PATH = _ROOT / "data" / "cache" / "response_cache.json"
+_CACHE_TTL_SECONDS = 24 * 3600
+# 운영 배포 시 끌 수 있게 환경변수로 제어 (기본 on)
+_CACHE_ENABLED = os.getenv("ADGUARD_CACHE_ENABLED", "1") != "0"
+
+
+def _l1_matches_to_violations(matched_keywords: list[dict], severity: str = "hard") -> tuple[list[dict], set]:
+    """
+    L1 rule_engine의 raw matched_keywords를 L3-style violations 스키마로 정규화.
+
+    D12+: Fast Mode·explain 조립·최상위 violations 복제 등 여러 곳에서
+    L1 raw를 파싱하던 중복 코드를 이 함수 하나로 통합.
+
+    Args:
+        matched_keywords: L1 check()의 matched_keywords 필드
+        severity: 생성할 violation의 severity ("hard"/"medium"/"low")
+
+    Returns:
+        (violations[dict], legal_bases[set])
+    """
+    violations: list[dict] = []
+    legal_bases: set = set()
+    for m in matched_keywords:
+        term = m.get("keyword") or m.get("matched", "?")
+        violations.append({
+            "phrase": term,
+            "type": m.get("category", "?"),
+            "severity": severity,
+            "explanation": m.get("reason", "L1 Rule Engine 감지"),
+        })
+        for lb in m.get("legal_basis", []):
+            legal_bases.add(lb)
+    return violations, legal_bases
+
+
+def _compute_source_hash() -> str:
+    """
+    캐시 무효화 키 — cases/copies/prompts/blocklist가 바뀌면 mtime이 달라져
+    해시가 바뀌므로 이전 캐시가 자동 무효화됨.
+    """
+    paths = [
+        _ROOT / "data" / "fewshot" / "cases.jsonl",
+        _ROOT / "data" / "fewshot" / "copies.jsonl",
+        _ROOT / "data" / "fewshot" / "copies_selection.jsonl",
+        _ROOT / "data" / "fewshot" / "styles.jsonl",
+        _ROOT / "prompts" / "judge" / "grounded.txt",
+        _ROOT / "prompts" / "rewriter" / "v3_dynamic.txt",
+        _ROOT / "configs" / "blocklist.yaml",
+    ]
+    h = hashlib.sha1()
+    for p in paths:
+        if p.exists():
+            h.update(f"{p.name}:{p.stat().st_mtime}".encode())
+    return h.hexdigest()[:12]
+
+
 class AdGuardCascade:
-    """L1 Rule → L2 RAG → L3 Judge → L4 Rewriter → L5 Re-Judge 파이프라인."""
+    """L1 Rule → L2 RAG → L3 Judge → L4 Rewriter → L5-lite 파이프라인."""
 
     def __init__(
         self,
@@ -39,22 +101,63 @@ class AdGuardCascade:
         self.retriever = Retriever()
         self.judge = Judge(prompt_version=judge_prompt)
         self.rewriter = Rewriter(self.retriever, prompt_version=rewriter_prompt)
-        self.rejudge = ReJudge(self.retriever, self.judge, self.rewriter, max_retries=max_retries)
+        # L5-medium: judge 인스턴스 주입으로 수정안 L3-lite 재판정 가능
+        self.rejudge = ReJudge(rule_engine=self.rule_engine, judge=self.judge)
+
+        # 응답 캐시 (데이터/프롬프트 mtime이 포함된 source_hash가 바뀌면 자동 무효화)
+        self._source_hash = _compute_source_hash()
+        self._cache: dict = self._load_cache()
+        self._cache_writes_since_save = 0
+
+    def _load_cache(self) -> dict:
+        if not _CACHE_ENABLED or not _CACHE_PATH.exists():
+            return {}
+        try:
+            with _CACHE_PATH.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            # 만료 항목 정리
+            now = time.time()
+            return {k: v for k, v in data.items() if v.get("expires_at", 0) > now}
+        except Exception:
+            return {}
+
+    def _save_cache(self) -> None:
+        if not _CACHE_ENABLED:
+            return
+        try:
+            _CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with _CACHE_PATH.open("w", encoding="utf-8") as f:
+                json.dump(self._cache, f, ensure_ascii=False)
+            self._cache_writes_since_save = 0
+        except Exception:
+            pass
+
+    def _cache_key(self, copy: str, context: ProductContext) -> str:
+        text = (copy or "").strip()
+        pt = context.product_type.value if context else "general_cosmetic"
+        cert_no = (context.certification_no or "") if context else ""
+        certs = "|".join(sorted(context.certified_claims or [])) if context else ""
+        raw = f"{text}\x1f{pt}\x1f{cert_no}\x1f{certs}\x1f{self._source_hash}"
+        return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
     def check(
         self,
         copy: str,
         context: ProductContext | None = None,
-        skip_l3_if_hard_block: bool = False,
+        skip_l3_if_hard_block: bool | None = None,
         run_rewriter: bool = True,
     ) -> dict:
         """
-        광고 카피 전체 판정 (L1 → L5).
+        광고 카피 전체 판정 (L1 → L5-lite).
 
         Args:
             copy: 판정할 광고 카피
-            skip_l3_if_hard_block: L1이 hard_block이면 L3 건너뜀 (비용 절감)
-            run_rewriter: L4/L5 수정안 생성 여부 (기본 True)
+            skip_l3_if_hard_block:
+                None(기본, 권장) — context 기반 자동 결정.
+                    기능성 화장품은 False(맥락 판단 필요),
+                    일반 화장품은 True(Fast Mode로 비용 절감).
+                True/False — 호출자가 명시적으로 override할 때만 사용.
+            run_rewriter: L4/L5-lite 수정안 생성 여부 (기본 True)
 
         Returns:
             {
@@ -83,6 +186,22 @@ class AdGuardCascade:
         if context is None:
             context = ProductContext()
 
+        # skip_l3_if_hard_block 자동 결정: 기능성 화장품은 L3 맥락 판단 필요
+        if skip_l3_if_hard_block is None:
+            skip_l3_if_hard_block = not context.is_functional
+
+        # ========== 응답 캐시 lookup ==========
+        # run_rewriter=False 같은 옵션 변형까지 포함하려면 키에 추가해야 하나,
+        # 현재 호출 경로는 항상 run_rewriter=True이므로 생략.
+        cache_key = self._cache_key(copy, context) if _CACHE_ENABLED else None
+        if cache_key and cache_key in self._cache:
+            entry = self._cache[cache_key]
+            if entry.get("expires_at", 0) > time.time():
+                cached = dict(entry["result"])
+                cached["from_cache"] = True
+                cached["total_latency_ms"] = round((time.perf_counter() - start) * 1000)
+                return cached
+
         result = {
             "copy": copy,
             "product_context": context.to_dict(),
@@ -104,8 +223,11 @@ class AdGuardCascade:
                 ),
                 "layers": {"l0": "stopped_pharmaceutical"},
                 "verified_rewrites": [],
+                "optimization_hints": [],  # 의약품 out_of_scope 경로는 힌트 대상 아님
                 "total_latency_ms": round((time.perf_counter() - start) * 1000),
                 "total_tokens": 0,
+                "from_cache": False,
+                "analyzed_at": datetime.now(timezone.utc).isoformat(),
                 "recovery_hint": "제품 유형을 '일반 화장품' 또는 '기능성 화장품'으로 다시 선택해주세요.",
             }
 
@@ -114,28 +236,36 @@ class AdGuardCascade:
         result["layers"]["l1"] = l1
 
         # ============ Fast Mode ============
-        # L1이 hard_block이고 fast_mode 옵션이면 L2/L3 스킵하고 L4로 직행
-        # - L1 키워드 정보를 L4에 fake_l3로 전달
-        # - L4/L5는 여전히 실행 (수정안 필요)
+        # L1 hard_block + Fast Mode → L2/L3 스킵하고 L4로 직행
+        # 단, 기능성 화장품이 인증받은 효능 키워드로 잡힌 경우는 L3로 넘김
         l1_fast_mode = False
         if l1["verdict"] == "hard_block" and skip_l3_if_hard_block:
-            l1_fast_mode = True
+            if context.is_functional and context.certified_claims:
+                l1_keywords = [
+                    (m.get("keyword") or m.get("matched", "")).lower()
+                    for m in l1.get("matched_keywords", [])
+                ]
+                has_certified_overlap = any(
+                    claim in kw or kw in claim
+                    for claim in context.certified_claims
+                    for kw in l1_keywords
+                )
+                l1_fast_mode = not has_certified_overlap
+            else:
+                l1_fast_mode = True
+
+        # L5-medium에서 재사용할 L2 chunks 보관소 (Fast Mode에서는 비어있음)
+        l2_chunks_for_rejudge: list[dict] = []
+
+        if l1_fast_mode:
             result["layers"]["l2"] = None
             result["layers"]["l3"] = None
 
-            # L1 키워드를 L4가 이해할 수 있는 형태로 변환
-            violations = []
-            legal_bases = set()
-            for m in l1.get("matched_keywords", [])[:5]:
-                term = m.get("keyword") or m.get("matched", "?")
-                violations.append({
-                    "phrase": term,
-                    "type": m.get("category", "?"),
-                    "severity": "hard",
-                    "explanation": m.get("reason", "L1 Rule Engine 감지"),
-                })
-                for lb in m.get("legal_basis", []):
-                    legal_bases.add(lb)
+            # L1 → L3-style 정규화 (공통 함수 사용)
+            violations, legal_bases = _l1_matches_to_violations(
+                l1.get("matched_keywords", [])[:5],
+                severity="hard",
+            )
 
             l3 = {
                 "verdict": "hard_block",
@@ -161,6 +291,8 @@ class AdGuardCascade:
         if not l1_fast_mode:
             # L2: RAG Retrieval
             l2 = self.retriever.retrieve(copy, top_k=5)
+            # L5-medium 재사용을 위해 chunks 보관
+            l2_chunks_for_rejudge = l2["chunks"]
             result["layers"]["l2"] = {
                 "latency_ms": l2["latency_ms"],
                 "chunk_count": len(l2["chunks"]),
@@ -176,22 +308,23 @@ class AdGuardCascade:
 
             # L3: Judge (제품 컨텍스트 주입)
             l3 = self.judge.judge(copy, l2["chunks"], context=context)
+
+            # 방어 로직: 프롬프트가 legal_basis를 배열로 응답하도록 수정됐지만,
+            # 혹시라도 구 스키마(law_citation 단일 문자열)가 올 경우 배열로 변환
+            if not l3.get("legal_basis"):
+                law_cite = l3.get("law_citation")
+                if law_cite:
+                    l3["legal_basis"] = [law_cite] if isinstance(law_cite, str) else list(law_cite)
+                else:
+                    l3["legal_basis"] = []
+
             result["layers"]["l3"] = l3
 
-            # 최종 verdict 결정
-            l1_verdict = l1["verdict"]
+            # 최종 verdict 결정 (D12 C-lite: L1은 hard_block/pass 2-state)
+            #   - L1 hard_block → Fast Mode에서 이미 final 설정됨 (여기 안 옴)
+            #   - L1 pass → L3 판정을 그대로 신뢰 (caution·safe 판단은 L3 전담)
             l3_verdict = l3.get("verdict", "caution")
-
-            if l1_verdict == "hard_block":
-                final = "hard_block"
-            elif l3_verdict == "hard_block":
-                final = "hard_block"
-            elif l1_verdict == "caution" or l3_verdict == "caution":
-                final = "caution"
-            elif l1_verdict == "functional_conditional":
-                final = l3_verdict
-            else:
-                final = l3_verdict
+            final = l3_verdict
 
         result["final_verdict"] = final
         result["confidence"] = l3.get("confidence", 0.8)
@@ -222,15 +355,26 @@ class AdGuardCascade:
             }
             tokens += l4.get("usage", {}).get("total_tokens", 0)
 
-            # ============ L5: Re-Judge ============
-            l5 = self.rejudge.verify(copy, l3, l4, context=context)
+            # ============ L5-medium: L1 바이너리 + L3-lite 의미 재판정 ============
+            # L2 chunks를 L5에 전달 → L3-lite가 추가 RAG 호출 없이 재판정 가능
+            l5 = self.rejudge.verify(
+                copy,
+                l3,
+                l4,
+                context=context,
+                l2_chunks=l2_chunks_for_rejudge,
+            )
             result["layers"]["l5"] = {
                 "all_safe": l5["all_safe"],
+                "all_clean": l5.get("all_clean", False),
                 "total_retries": l5["total_retries"],
                 "latency_ms": l5["latency_ms"],
                 "mode": l5.get("mode", "?"),
+                "rejudge_tokens": l5.get("rejudge_tokens", 0),
             }
             result["verified_rewrites"] = l5["verified_suggestions"]
+            # L5 재판정 토큰도 총합에 누적
+            tokens += l5.get("rejudge_tokens", 0)
         else:
             result["layers"]["l4"] = None
             result["layers"]["l5"] = None
@@ -239,6 +383,28 @@ class AdGuardCascade:
         # 집계
         result["total_latency_ms"] = round((time.perf_counter() - start) * 1000)
         result["total_tokens"] = tokens
+        result["from_cache"] = False
+        result["analyzed_at"] = datetime.now(timezone.utc).isoformat()
+
+        # optimization_hints — L3 응답에서 최상위로 복제 (프론트 편의)
+        # Judge 프롬프트는 verdict 무관 3개 필수이나, 혹시 누락 시 빈 배열.
+        hints = l3.get("optimization_hints") if isinstance(l3, dict) else None
+        result["optimization_hints"] = hints if isinstance(hints, list) else []
+
+        # violations / legal_basis — L3 응답을 최상위로 복제 (스키마-구현 일치, D12+)
+        # 이전엔 layers.l3.violations 안에만 있어 AnalyzeResponse 스키마와 drift 발생.
+        result["violations"] = l3.get("violations", []) if isinstance(l3, dict) else []
+        result["legal_basis"] = l3.get("legal_basis", []) if isinstance(l3, dict) else []
+
+        # ========== 응답 캐시 save ==========
+        if cache_key:
+            self._cache[cache_key] = {
+                "result": result,
+                "expires_at": time.time() + _CACHE_TTL_SECONDS,
+            }
+            self._cache_writes_since_save += 1
+            if self._cache_writes_since_save >= 10:
+                self._save_cache()
 
         return result
 

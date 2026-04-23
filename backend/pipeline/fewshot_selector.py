@@ -410,7 +410,7 @@ class FewshotSelector:
         top_k_cases: int = 3,
         top_k_precedents: int = 0,  # 기본 0 — Rewriter에서 precedent는 효용 낮음
         top_k_styles: int = 3,
-        top_k_safe_copies: int = 5,
+        top_k_safe_copies: int = 3,  # 경량화: 5 → 3 (입력 토큰 약 15% ↓)
     ) -> dict:
         """
         입력 카피에 대해 4개 소스에서 Few-shot 후보 선별.
@@ -493,8 +493,8 @@ class FewshotSelector:
                 "id": s.get("id"),
                 "style_name": s.get("style_name"),
                 "source_brand": s.get("source_brand"),
-                "core_pattern": s.get("core_pattern", "")[:200],
-                "example_copies": examples[:3],  # 최대 3개
+                "core_pattern": s.get("core_pattern", "")[:120],  # 경량화: 200 → 120
+                "example_copies": examples[:2],  # 경량화: 3 → 2 (핵심 예시만)
                 "best_for_category": s.get("best_for_category"),
                 "avoid": s.get("avoid", ""),  # ⭐ 금지 필드 avoid
                 "yoonji_risk": s.get("yoonji_risk", ""),  # ⭐ 큐레이션 리스크
@@ -534,10 +534,12 @@ class FewshotSelector:
             lines.append("**원본 → 수정안 변환 패턴 참고용**")
             lines.append("")
             for i, c in enumerate(fewshot["cases"], 1):
+                # 경량화: 법적 근거 라인 제거 (L3 legal_basis와 중복).
+                # 위반 유형은 유지 (변환 방향 힌트로 사용됨)
                 lines.append(f"### 사례 {i} — 유사도 {c['similarity']:.2f}")
                 lines.append(f"**원본**: \"{c['original']}\"")
-                lines.append(f"**위반 유형**: {', '.join(c['violation_types'])}")
-                lines.append(f"**법적 근거**: {c['law_basis']}")
+                if c.get('violation_types'):
+                    lines.append(f"**위반 유형**: {', '.join(c['violation_types'])}")
                 lines.append("**수정안**:")
                 lines.append(f"- safe: \"{c['safe']}\"")
                 lines.append(f"- marketing: \"{c['marketing']}\"")

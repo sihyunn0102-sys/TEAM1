@@ -214,19 +214,27 @@ async def analyze_text(req: TextRequest):
     if cascade is None:
         raise HTTPException(status_code=503, detail="Cascade not initialized")
 
+    text = req.text or req.copy
+    if not text:
+        raise HTTPException(status_code=400, detail="text 또는 copy 중 하나는 필요합니다.")
+
     task_id = str(uuid.uuid4())
     ctx = _make_product_context(req)
 
     result = cascade.check(
-        req.text,
+        text,
         context=ctx,
         skip_l3_if_hard_block=True,
         run_rewriter=True,
     )
 
-    _save_history(task_id, req.text, result)
+    _save_history(task_id, text, result)
     return {"task_id": task_id, **result}
 
+
+# (중간 import / 설정 부분 동일하므로 생략 없이 유지)
+
+# ... (위 코드 동일)
 
 @app.get("/analyze/stream", tags=["analyze"])
 async def analyze_stream(text: str, product_type: str = "general_cosmetic"):
@@ -302,13 +310,31 @@ async def analyze_stream(text: str, product_type: str = "general_cosmetic"):
             if l3.get("reasoning"):
                 explain_parts.append(f"[L3] {l3['reasoning']}")
 
+            # 🔥 핵심 수정: violations 정규화
+            raw_violations = l3.get("violations", [])
+            normalized_violations = []
+
+            for v in raw_violations:
+                phrase = (
+                    v.get("phrase")
+                    or v.get("violation_word")
+                    or v.get("keyword")
+                    or v.get("span")   # 🔥 핵심
+                    or ""
+                )
+
+                normalized_violations.append({
+                    **v,
+                    "phrase": phrase
+                })
+
             result = {
                 "task_id": task_id,
                 "copy": text,
                 "final_verdict": final,
                 "confidence": l3.get("confidence", 0.8),
                 "explanation": " / ".join(explain_parts),
-                "violations": l3.get("violations", []),
+                "violations": normalized_violations,  # 🔥 변경됨
                 "legal_basis": l3.get("legal_basis", []),
                 "verified_rewrites": verified_rewrites,
                 "layer_times": layer_times,
@@ -363,10 +389,15 @@ async def analyze_image(file: UploadFile = File(...)):
     return {"task_id": task_id, "ocr_text": text, **result}
 
 
+# ── POST /rewrite ──────────────────────────────────────────────────────
 @app.post("/rewrite", tags=["solution"])
 async def rewrite(req: TextRequest):
     if cascade is None:
         raise HTTPException(status_code=503, detail="Cascade not initialized")
+
+    text = req.text or req.copy
+    if not text:
+        raise HTTPException(status_code=400, detail="text 또는 copy 중 하나는 필요합니다.")
 
     fake_judge = {
         "verdict": "caution",
@@ -375,9 +406,9 @@ async def rewrite(req: TextRequest):
         "legal_basis": [],
         "suggested_next_step": "사용자 요청으로 재수정",
     }
-    result = cascade.rewriter.rewrite(req.text, fake_judge)
-    return {"task_id": str(uuid.uuid4()), **result}
 
+    result = cascade.rewriter.rewrite(text, fake_judge)
+    return {"task_id": str(uuid.uuid4()), **result}
 
 @app.get("/result/{task_id}", tags=["analyze"])
 async def get_result(task_id: str):

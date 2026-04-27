@@ -2,7 +2,7 @@
 
 # 🛡️ AdGuard
 
-### ✨ Azure AI 기반 화장품 광고 카피 검수 및 합법 대체 문구 제안 서비스
+### ✨ Azure AI & 클라우드 기반 화장품 광고 카피 검수 및 합법 대체 문구 제안 서비스
 
 ![Azure](https://img.shields.io/badge/Azure-AI%20Service-0078D4?style=for-the-badge&logo=microsoftazure&logoColor=white)
 ![GPT-4.1](https://img.shields.io/badge/Azure%20OpenAI-GPT--4.1-412991?style=for-the-badge)

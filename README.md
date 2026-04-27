@@ -16,8 +16,9 @@
 
 ## ✨ Overview
 
-AdGuard는 화장품 광고 카피가 실제 배포되기 전에 법적 리스크가 있는 표현을 탐지하고, 관련 법령 근거와 함께 실무에서 사용할 수 있는 대체 카피를 제안하는 Azure AI<img width="1920" height="1080" alt="그림1" src="https://github.com/user-attachments/assets/bc1701ba-e827-444c-9ac7-2617373fb942" />
- 기반 광고 검수 서비스입니다.
+<img width="1832" height="1068" alt="image" src="https://github.com/user-attachments/assets/a5cde390-8e89-4cd4-a314-3b9eeef8d94e" />
+
+AdGuard는 화장품 광고 카피가 실제 배포되기 전에 법적 리스크가 있는 표현을 탐지하고, 관련 법령 근거와 함께 실무에서 사용할 수 있는 대체 카피를 제안하는 Azure AI & 클라우드 기반 광고 검수 서비스입니다.
 
 사용자는 광고 텍스트를 직접 입력하거나 이미지, PDF, URL을 업로드할 수 있습니다. 이미지와 PDF는 Azure Document Intelligence로 광고 문구를 추출하고, 추출된 텍스트는 `text-embedding-3-large`와 Azure AI Search 기반 RAG 검색을 통해 관련 법령, 의결서, 가이드라인 근거와 매칭됩니다.
 
@@ -31,8 +32,10 @@ AdGuard는 화장품 광고 카피가 실제 배포되기 전에 법적 리스�
 - [🧭 Project Background](#project-background)
 - [💼 Business Impact](#business-impact)
 - [🚀 Key Features](#key-features)
+- [🎛️ Functional UI & UX](#functional-ui-ux)
 - [🏗️ Architecture](#architecture)
 - [🧰 Tech Stack](#tech-stack)
+- [📁 Folder Structure](#folder-structure)
 - [📊 Data and Metrics](#data-and-metrics)
 - [👥 Team](#team)
 - [🧩 Contributions](#contributions)
@@ -174,14 +177,119 @@ AdGuard의 장기적인 비즈니스 가치는 광고 검수 자동화를 넘어
 | 🧾 | 결과 UI | 위반 문구 하이라이트, Before/After 비교, 법적 근거 제공 |
 | 📁 | 리포트/히스토리 | PDF 리포트와 검수 기록 저장 |
 
+<a id="functional-ui-ux"></a>
+
+## 🎛️ Functional UI & UX
+
+AdGuard의 UI는 단순히 화면을 보여주는 용도가 아니라, 광고 검수 업무의 흐름을 그대로 따라가도록 설계했습니다. 사용자는 광고 문구를 입력하고, 분석 과정을 확인하고, 결과를 이해하고, 수정안을 적용하고, 필요하면 PDF 리포트로 공유할 수 있습니다.
+
+### 🧭 UI Flow
+
+| Step | 화면 | 핵심 기능 | 사용자 가치 |
+| --- | --- | --- | --- |
+| 01 | Main | 서비스 목적, 문제 상황, CTA 제공 | 사용자가 서비스 목적을 빠르게 이해 |
+| 02 | Upload | 텍스트/이미지/PDF/URL 입력, 제품 유형 선택, 동의 체크박스 | 광고 검수 요청을 한 화면에서 시작 |
+| 03 | Analysis | SSE 기반 L1~L5 분석 진행 상황 표시 | 막연한 대기 시간을 줄이고 분석 투명성 확보 |
+| 04 | Result | 위반 문구 하이라이트, 법적 근거, 수정안 3종, Before/After 비교 | 결과를 이해하고 바로 수정 가능 |
+| 05 | History | 과거 검수 결과와 리포트 관리 | 반복 검수와 사후 관리 가능 |
+| 06 | Admin | 운영 비용, 평균 분석 시간, 인프라 상태 모니터링 | 서비스 운영 상태와 개선 지표 확인 |
+
+### 📝 Upload UI
+
+<img width="2200" height="1630" alt="image" src="https://github.com/user-attachments/assets/0ba9f148-a515-4b3c-b00c-d72d4718a776" />
+
+Upload 화면은 마케터가 광고 검수를 시작하는 진입점입니다. 텍스트 직접 입력뿐 아니라 이미지와 PDF 업로드를 지원해 실제 광고 제작 환경에서 사용하는 배너, 상세페이지, 문서형 자료를 그대로 넣을 수 있도록 구성했습니다.
+
+| 기능 | 설명 |
+| --- | --- |
+| 제품 유형 선택 | 일반 화장품 / 기능성 화장품을 구분해 이후 판정 기준에 반영 |
+| 멀티모달 입력 | 텍스트, 이미지, PDF, URL 기반 입력 지원 |
+| Drag & Drop 업로드 | 파일 선택과 드래그 업로드를 모두 지원해 입력 UX 개선 |
+| OCR 연동 | 이미지/PDF 업로드 시 Azure Document Intelligence로 텍스트 추출 |
+| 입력 상태 제어 | 텍스트와 파일 입력 상태를 구분해 사용자의 입력 실수 감소 |
+| 동의 체크박스 | 분석 전 책임 한계와 데이터 처리 고지를 명확히 표시 |
+
+### ⚡ SSE Real-Time Analysis UI
+
+<img width="2602" height="1458" alt="image" src="https://github.com/user-attachments/assets/a0d380d0-d3c2-45bc-918d-363e04c9b69c" />
+
+분석 대기 화면은 Server-Sent Events(SSE)를 활용해 L1부터 L5까지의 분석 진행 상황을 실시간으로 보여줍니다. 사용자는 단순한 로딩 스피너가 아니라, 현재 어떤 AI 파이프라인 단계가 실행 중인지 확인할 수 있습니다.
+
+| 단계 | 표시 내용 | 목적 |
+| --- | --- | --- |
+| L1 Rule Engine | 금지어와 위험 패턴 탐지 중 | 빠른 초기 필터링 상태 공개 |
+| L2 RAG Retriever | 관련 법령과 의결서 검색 중 | 판단 근거 수집 과정 공개 |
+| L3 Judge | GPT-4.1 기반 위반 여부 판정 중 | AI 판단 단계의 투명성 확보 |
+| L4 Rewriter | 안전한 대체 카피 생성 중 | 생성형 AI가 수행하는 작업 명확화 |
+| L5 Re-Judge | 생성된 수정안 재검수 중 | 재위반 방지와 신뢰성 강화 |
+
+SSE 기반 진행 UI는 체감 대기 시간을 줄이는 역할도 합니다. 분석이 10초 이상 걸리는 경우에도 사용자는 시스템이 멈춘 것이 아니라 어느 단계에서 작업 중인지 알 수 있어 서비스 신뢰도가 높아집니다.
+
+### 🧾 Result UI
+
+<img width="1954" height="2104" alt="image" src="https://github.com/user-attachments/assets/98282615-911e-4da2-a79b-b812b216c444" />
+
+
+Result 화면은 AdGuard의 핵심 결과를 보여주는 화면입니다. 단순히 `위험`, `안전`만 표시하지 않고, 어떤 문구가 왜 문제인지, 어떤 법적 근거가 있는지, 어떻게 바꾸면 되는지를 한 화면에서 확인할 수 있도록 구성했습니다.
+
+| UI 요소 | 기능 |
+| --- | --- |
+| 위험도 Badge | Passed / Warning / Blocked 상태를 색상, 아이콘, 텍스트로 함께 표시 |
+| 위반 문구 하이라이트 | 문제가 되는 단어와 구절을 빨간 밑줄 또는 강조 표시로 시각화 |
+| 법적 근거 카드 | 화장품법, 표시광고법, 식약처 가이드라인 등 판단 근거 제공 |
+| Before/After 비교 | 원본 광고 문구와 AI 수정안을 나란히 비교 |
+| 수정안 3종 카드 | 안전형, 마케팅형, 기능성형 대체 카피 제공 |
+| 원클릭 적용/복사 | 사용자가 선택한 수정안을 바로 복사하거나 After 영역에 반영 |
+| 피드백 UI | 추천 문구나 판정 결과에 대한 사용자 반응을 수집 |
+
+이 화면의 목표는 설명 가능한 AI(XAI)입니다. 사용자가 AI 결과를 그대로 믿도록 강요하는 것이 아니라, 어떤 문구가 어떤 이유로 위험한지 확인하고 최종 선택은 사용자가 할 수 있도록 설계했습니다.
+
+### 📁 History & PDF Report UI
+
+<img width="3205" height="1687" alt="PDF 리포트" src="https://github.com/user-attachments/assets/b82a195b-aa65-4b32-a0bb-f21ae1f95888" />
+
+History 화면과 PDF 리포트는 검수 결과를 사후에 관리하기 위한 기능입니다. 광고 검수는 한 번의 화면 확인으로 끝나는 것이 아니라, 팀장·법무팀·클라이언트에게 근거를 공유해야 하는 경우가 많기 때문에 리포트와 이력 관리가 중요합니다.
+
+| 기능 | 설명 |
+| --- | --- |
+| 검수 이력 저장 | 분석 요청, 위험도, 수정안, 생성 시점을 기록 |
+| 결과 재확인 | 과거 검수 결과를 다시 열람해 반복 작업 감소 |
+| PDF 리포트 | 위반 문구, 판단 근거, 수정안, 면책 문구를 문서 형태로 생성 |
+| 보고 활용 | 내부 승인, 클라이언트 공유, 법무 검토 자료로 활용 가능 |
+
+### 📊 Admin Dashboard UI
+
+<img width="3332" height="2635" alt="관리자 대시보드" src="https://github.com/user-attachments/assets/06e8e67f-35f4-4967-8318-b1a708b5fcb8" />
+
+Admin 화면은 운영 관점의 상태를 확인하기 위한 대시보드입니다. AI 서비스는 정확도뿐 아니라 비용, 응답 시간, 장애 여부를 함께 관리해야 하므로 운영 지표를 별도로 시각화했습니다.
+
+| 지표 | 설명 |
+| --- | --- |
+| GPT 토큰/비용 추정 | 분석 요청에 따른 운영 비용 확인 |
+| 평균 분석 시간 | L1~L5 파이프라인 처리 시간 모니터링 |
+| 인프라 상태 | API, Storage, AI Search 등 주요 구성 요소 상태 확인 |
+| 판정 결과 비율 | Passed / Warning / Blocked 비율 확인 |
+| 누적 트래픽 | 서비스 사용량과 검수 요청 흐름 파악 |
+
+### ♿ Accessibility & Responsible UI
+
+AdGuard는 위험도를 색상만으로 표현하지 않고 아이콘과 텍스트를 함께 사용했습니다. 색약 사용자나 스크린 리더 사용자도 위험 상태를 이해할 수 있도록 UI 접근성을 고려했습니다.
+
+| 원칙 | UI 반영 |
+| --- | --- |
+| 투명성 | SSE로 분석 과정을 단계별 공개 |
+| 설명 가능성 | 위반 문구와 법적 근거를 함께 표시 |
+| 사용자 자율성 | 수정안 3종 중 사용자가 직접 선택 |
+| 책임성 | 분석 전 동의 체크박스와 결과 면책 문구 제공 |
+| 접근성 | 색상 + 아이콘 + 텍스트 조합으로 위험도 표현 |
+
 <a id="architecture"></a>
 
 ## 🏗️ Architecture
 
 AdGuard는 단일 GPT 호출이 아니라 역할을 분리한 5-Layer Cascade 구조로 설계되었습니다.
-<svg width="1920" height="1080" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" overflow="hidden"><defs><clipPath id="clip0"><rect x="0" y="0" width="1920" height="1080"/></clipPath><clipPath id="clip1"><path d="M216.52 459.012 228.852 474.266 213.911 486.856 201.579 471.603Z" fill-rule="evenodd" clip-rule="evenodd"/></clipPath><clipPath id="clip2"><path d="M351.708 396.187 362.454 379.73 378.573 390.701 367.827 407.158Z" fill-rule="evenodd" clip-rule="evenodd"/></clipPath></defs><g clip-path="url(#clip0)"><path d="M0 0 2020.33 0 2020.33 1245.41 0 1245.41Z" fill="#FAFBFC" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="32" transform="matrix(1.38379 0 0 1.41275 22.4174 85)">AdGuard · Runtime Architecture</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="16" transform="matrix(1.38379 0 0 1.41275 22.4174 130)">화장품 광고 컴플라이언스 검수 파이프라인 </text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="16" transform="matrix(1.38379 0 0 1.41275 394.635 130)">· L</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="16" transform="matrix(1.38379 0 0 1.41275 417.618 130)">0 </text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="16" transform="matrix(1.38379 0 0 1.41275 436.364 130)">~ </text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="16" transform="matrix(1.38379 0 0 1.41275 455.802 130)">L</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="16" transform="matrix(1.38379 0 0 1.41275 467.608 130)">5</text><path d="M1948.37 179.892C1965.19 179.892 1978.82 193.522 1978.82 210.336L1978.82 979.721C1978.82 996.535 1965.19 1010.16 1948.37 1010.16L348.714 1010.16C331.901 1010.16 318.271 996.535 318.271 979.721L318.271 210.336C318.271 193.522 331.901 179.892 348.714 179.892Z" stroke="#CBD5E1" stroke-width="2.07568" stroke-dasharray="9.68651 5.53515" fill="#F1F5FB" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="14" transform="matrix(1.38379 0 0 1.41275 285.337 229)">AZURE PLATFORM</text><g><path d="M73.802 36.901C73.802 47.0909 65.5414 55.3515 55.3515 55.3515 45.1616 55.3515 36.901 47.0909 36.901 36.901 36.901 26.7111 45.1616 18.4505 55.3515 18.4505 65.5414 18.4505 73.802 26.7111 73.802 36.901Z" fill="#0F172A" transform="matrix(1 0 0 1.02093 36.2552 282.551)"/><path d="M18.4505 95.9426C18.4505 73.802 30.7509 62.7317 55.3515 62.7317 79.9521 62.7317 92.2525 73.802 92.2525 95.9426Z" fill="#0F172A" transform="matrix(1 0 0 1.02093 36.2552 282.551)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 59.3161 432)">마케터</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="12" transform="matrix(1.38379 0 0 1.41275 60.8202 463)">광고 카피</text><text fill="#4B5563" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 53.062 489)">일반 </text><text fill="#4B5563" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 82.881 489)">· </text><text fill="#4B5563" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 90.6851 489)">기능성</text><path d="M221.406 318.271 408.217 318.271" stroke="#334155" stroke-width="3.04433" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 21.3103 10.6552 0 21.3103Z" fill="#334155" transform="matrix(1 0 0 1.02093 330.559 314.055)"/></g><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 175.984 308)">POST </text><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 226.368 308)">/</text><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 232.376 308)">analyze</text><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 293.977 308)">/</text><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 299.985 308)">text</text><path d="M207.568 380.542 279.525 467.72" stroke="#0891B2" stroke-width="2.76757" stroke-dasharray="6.91894 4.15136" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g clip-path="url(#clip1)"><path d="M0 0 19.5343 9.76716 0 19.5343Z" fill="#0891B2" transform="matrix(0.631309 0.780865 -0.764855 0.644524 216.52 459.012)"/></g><g><path d="M24.2163 67.8056C13.4535 67.8056 8.07209 62.4242 8.07209 51.6614 8.07209 43.0512 12.3772 37.6697 20.9874 35.5172 22.0638 24.7544 28.5215 19.373 40.3605 19.373 51.1233 19.373 57.581 23.6782 59.7335 32.2884 71.5725 32.2884 78.5684 37.1316 80.7209 46.8181 89.3311 47.8945 93.6363 52.7377 93.6363 61.3479 93.6363 69.9581 88.2549 74.2633 77.4921 74.2633L29.0595 74.2633C25.8307 74.2633 24.2163 72.1107 24.2163 67.8056Z" fill="#0078D4" transform="matrix(1 0 0 1.02093 216.148 459.145)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="14" transform="matrix(1.38379 0 0 1.41275 191.198 589)">Doc Intelligence</text><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 169.742 615)">Azure OCR · </text><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 259.437 615)">이미지 </text><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 302.411 615)">→ </text><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 319.952 615)">텍스트</text><path d="M370.855 467.72 428.974 380.542" stroke="#0891B2" stroke-width="2.76757" stroke-dasharray="6.91894 4.15136" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g clip-path="url(#clip2)"><path d="M0 0 19.4951 9.74757 0 19.4951Z" fill="#0891B2" transform="matrix(0.551226 -0.844146 0.826839 0.562764 351.708 396.187)"/></g><g><path d="M27.6757 77.4921C15.3754 77.4921 9.22525 71.342 9.22525 59.0416 9.22525 49.2014 14.1454 43.0511 23.9856 40.5911 25.2157 28.2907 32.5959 22.1406 46.1262 22.1406 58.4266 22.1406 65.8068 27.0608 68.2668 36.901 81.7971 36.901 89.7925 42.4361 92.2525 53.5064 102.093 54.7365 107.013 60.2717 107.013 70.1119 107.013 79.9521 100.863 84.8723 88.5624 84.8723L33.2109 84.8723C29.5208 84.8723 27.6757 82.4123 27.6757 77.4921Z" fill="#0078D4" transform="matrix(1 0 0 1.02093 354.526 282.551)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 364.677 432)">FastAPI</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 361.216 463)">App Service</text><path d="M539.677 332.109 712.651 332.109" stroke="#334155" stroke-width="3.04433" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 21.3103 10.6552 0 21.3103Z" fill="#334155" transform="matrix(1 0 0 1.02093 634.992 328.183)"/></g><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 529.424 322)">Dispatch</text><g><path d="M38.746 55.3515C38.746 62.4844 32.9636 68.2668 25.8307 68.2668 18.6977 68.2668 12.9153 62.4844 12.9153 55.3515 12.9153 48.2185 18.6977 42.4361 25.8307 42.4361 32.9636 42.4361 38.746 48.2185 38.746 55.3515Z" fill="#8B5CF6" transform="matrix(1 0 0 1.02093 658.96 282.551)"/><path d="M97.7876 25.8307C97.7876 32.9636 92.0052 38.746 84.8723 38.746 77.7393 38.746 71.9569 32.9636 71.9569 25.8307 71.9569 18.6977 77.7393 12.9153 84.8723 12.9153 92.0052 12.9153 97.7876 18.6977 97.7876 25.8307Z" fill="#8B5CF6" transform="matrix(1 0 0 1.02093 658.96 282.551)"/><path d="M97.7876 84.8723C97.7876 92.0052 92.0052 97.7876 84.8723 97.7876 77.7393 97.7876 71.9569 92.0052 71.9569 84.8723 71.9569 77.7393 77.7393 71.9569 84.8723 71.9569 92.0052 71.9569 97.7876 77.7393 97.7876 84.8723Z" fill="#8B5CF6" transform="matrix(1 0 0 1.02093 658.96 282.551)"/><path d="M36.901 51.6614 73.802 29.5208" stroke="#8B5CF6" stroke-width="5.53515" transform="matrix(1 0 0 1.02093 658.96 282.551)"/><path d="M36.901 59.0416 73.802 81.1822" stroke="#8B5CF6" stroke-width="5.53515" transform="matrix(1 0 0 1.02093 658.96 282.551)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 657.337 432)">L</text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 670.935 432)">0 </text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 693.118 432)">Router</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 648.547 463)">Product Context</text><path d="M844.11 332.109 1017.08 332.109" stroke="#334155" stroke-width="3.04433" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 21.3103 10.6552 0 21.3103Z" fill="#334155" transform="matrix(1 0 0 1.02093 939.426 328.183)"/></g><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 849.251 322)">Scan</text><g><path d="M55.3515 11.0703 18.4505 25.8307 18.4505 55.3515C18.4505 72.5719 30.7509 87.3323 55.3515 99.6327 79.9521 87.3323 92.2525 72.5719 92.2525 55.3515L92.2525 25.8307Z" fill="#6366F1" transform="matrix(1 0 0 1.02093 963.393 282.551)"/><path d="M40.5911 55.3515 51.6614 66.4218 73.802 40.5911" stroke="#FFFFFF" stroke-width="7.3802" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="matrix(1 0 0 1.02093 963.393 282.551)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 977.587 432)">L</text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 991.185 432)">1 </text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1008.6 432)">Rule</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 941.609 463)">hard</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 977.965 463)">_</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 985.607 463)">block </text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 1033.69 463)">바이너리</text><path d="M1148.54 332.109 1321.52 332.109" stroke="#334155" stroke-width="3.04433" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 21.3103 10.6552 0 21.3103Z" fill="#334155" transform="matrix(1 0 0 1.02093 1243.86 328.183)"/></g><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="14" transform="matrix(1.38379 0 0 1.41275 1138.26 322)">Retrieve</text><g><path d="M70.1119 44.2812C70.1119 58.5471 58.5471 70.1119 44.2812 70.1119 30.0153 70.1119 18.4505 58.5471 18.4505 44.2812 18.4505 30.0153 30.0153 18.4505 44.2812 18.4505 58.5471 18.4505 70.1119 30.0153 70.1119 44.2812Z" stroke="#06B6D4" stroke-width="9.22525" fill="none" transform="matrix(1 0 0 1.02093 1267.83 282.551)"/><path d="M59.0416 44.2812C59.0416 52.4331 52.4331 59.0416 44.2812 59.0416 36.1293 59.0416 29.5208 52.4331 29.5208 44.2812 29.5208 36.1293 36.1293 29.5208 44.2812 29.5208 52.4331 29.5208 59.0416 36.1293 59.0416 44.2812Z" fill="#67E8F9" fill-opacity="0.6" transform="matrix(1 0 0 1.02093 1267.83 282.551)"/><path d="M62.7317 62.7317 92.2525 92.2525" stroke="#06B6D4" stroke-width="9.22525" stroke-linecap="round" transform="matrix(1 0 0 1.02093 1267.83 282.551)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1252.58 432)">L</text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1266.17 432)">2 </text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1287.12 432)">Retriever</text><text fill="#0078D4" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1255.24 463)">Azure AI Search</text><path d="M1452.98 332.109 1625.95 332.109" stroke="#334155" stroke-width="3.04433" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 21.3103 10.6552 0 21.3103Z" fill="#334155" transform="matrix(1 0 0 1.02093 1548.29 328.183)"/></g><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="14" transform="matrix(1.38379 0 0 1.41275 1438.48 322)">Evidence</text><g><path d="M60.8866 25.8307C61.9056 25.8307 62.7317 26.6568 62.7317 27.6757L62.7317 90.4074C62.7317 91.4264 61.9056 92.2525 60.8866 92.2525L49.8163 92.2525C48.7974 92.2525 47.9713 91.4264 47.9713 90.4074L47.9713 27.6757C47.9713 26.6568 48.7974 25.8307 49.8163 25.8307Z" fill="#D97706" transform="matrix(1 0 0 1.02093 1572.26 282.551)"/><path d="M18.4505 33.2109 92.2525 33.2109" stroke="#D97706" stroke-width="7.3802" stroke-linecap="round" fill="none" transform="matrix(1 0 0 1.02093 1572.26 282.551)"/><path d="M18.4505 33.2109 7.3802 55.3515 29.5208 55.3515Z" fill="#F59E0B" transform="matrix(1 0 0 1.02093 1572.26 282.551)"/><path d="M92.2525 33.2109 81.1822 55.3515 103.323 55.3515Z" fill="#F59E0B" transform="matrix(1 0 0 1.02093 1572.26 282.551)"/><path d="M75.647 92.2525C76.666 92.2525 77.4921 93.0786 77.4921 94.0975L77.4921 99.6327C77.4921 100.652 76.666 101.478 75.647 101.478L35.0559 101.478C34.037 101.478 33.2109 100.652 33.2109 99.6327L33.2109 94.0975C33.2109 93.0786 34.037 92.2525 35.0559 92.2525Z" fill="#D97706" transform="matrix(1 0 0 1.02093 1572.26 282.551)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1573.4 432)">L</text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1587 432)">3 </text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1608.65 432)">Judge</text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1530.96 463)">Azure OpenAI · gpt</text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1690.85 463)">-</text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1698.93 463)">4</text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1710.75 463)">.</text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1715.83 463)">1</text><path d="M1688.22 467.72 1688.22 595.029" stroke="#334155" stroke-width="3.04433" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 21.3103 10.6552 0 21.3103Z" fill="#334155" transform="matrix(6.12323e-17 1.02093 -1 6.25141e-17 1638.27 590.079)"/></g><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="14" transform="matrix(1.38379 0 0 1.41275 1666.36 551)">Verdict</text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="22" transform="matrix(1.38379 0 0 1.41275 1512.94 657)">Decision Engine</text><path d="M1688.22 671.137 1688.22 802.597" stroke="#334155" stroke-width="3.04433" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 21.3103 10.6552 0 21.3103Z" fill="#334155" transform="matrix(6.12323e-17 1.02093 -1 6.25141e-17 1638.27 801.992)"/></g><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="14" transform="matrix(1.38379 0 0 1.41275 1666.36 763)">Rewrite</text><g><path d="M18.4505 92.2525 27.6757 70.1119 77.4921 20.2955 90.4074 33.2109 40.5911 83.0272Z" fill="#DB2777" transform="matrix(1 0 0 1.02093 1572.26 819.397)"/><path d="M87.6109 18.6406C88.6404 18.6406 89.4749 19.4752 89.4749 20.5047L89.4749 27.9609C89.4749 28.9904 88.6404 29.825 87.6109 29.825L72.6984 29.825C71.6689 29.825 70.8343 28.9904 70.8343 27.9609L70.8343 20.5047C70.8343 19.4752 71.6689 18.6406 72.6984 18.6406Z" fill="#9D174D" transform="matrix(0.699895 0.714546 -0.699895 0.714546 1612.46 769.295)"/><path d="M18.4505 92.2525 27.6757 70.1119 40.5911 83.0272Z" fill="#FBCFE8" transform="matrix(1 0 0 1.02093 1572.26 819.397)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1560.09 969)">L</text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1573.69 969)">4 </text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1595.8 969)">Rewriter</text><text fill="#DB2777" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1530.96 1000)">Azure OpenAI · gpt</text><text fill="#DB2777" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1690.85 1000)">-</text><text fill="#DB2777" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1698.93 1000)">4</text><text fill="#DB2777" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1710.75 1000)">.</text><text fill="#DB2777" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1715.83 1000)">1</text><path d="M150.833 0C159.24-2.4581e-15 166.054 6.81497 166.054 15.2217L166.054 15.2217C166.054 23.6284 159.24 30.4433 150.833 30.4433L15.2217 30.4433C6.81497 30.4433 0 23.6284 0 15.2217L0 15.2217C-2.4581e-15 6.81497 6.81497-2.4581e-15 15.2217-4.9162e-15Z" stroke="#DB2777" stroke-width="1.66055" fill="#FCE7F3" transform="matrix(1 0 0 1.02093 1544.58 1022.83)"/><text fill="#9D174D" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 1551.79 1044)">← </text><text fill="#9D174D" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 1569.33 1044)">L</text><text fill="#9D174D" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 1577.64 1044)">3 </text><text fill="#9D174D" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 1590.87 1044)">힌트 </text><text fill="#9D174D" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 1620.69 1044)">+ </text><text fill="#9D174D" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 1634.14 1044)">경계어 회피</text><path d="M1625.95 857.948 1452.98 857.948" stroke="#334155" stroke-width="3.04433" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 21.3103 10.6552 0 21.3103Z" fill="#334155" transform="matrix(-1 1.25028e-16 -1.22465e-16 -1.02093 1409.42 886.785)"/></g><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="14" transform="matrix(1.38379 0 0 1.41275 1438.6 859)">Re</text><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="14" transform="matrix(1.38379 0 0 1.41275 1460.99 859)">-</text><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="14" transform="matrix(1.38379 0 0 1.41275 1469.37 859)">verify</text><g><path d="M81.1822 14.7604C89.3341 14.7604 95.9426 21.3689 95.9426 29.5208L95.9426 81.1822C95.9426 89.3341 89.3341 95.9426 81.1822 95.9426L29.5208 95.9426C21.3689 95.9426 14.7604 89.3341 14.7604 81.1822L14.7604 29.5208C14.7604 21.3689 21.3689 14.7604 29.5208 14.7604Z" fill="#10B981" transform="matrix(1 0 0 1.02093 1267.83 819.397)"/><path d="M33.2109 55.3515 49.8163 71.9569 81.1822 40.5911" stroke="#FFFFFF" stroke-width="9.22525" stroke-linecap="round" stroke-linejoin="round" fill="none" transform="matrix(1 0 0 1.02093 1267.83 819.397)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1257.82 969)">L</text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1271.42 969)">5 </text><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 1292.77 969)">Rejudge</text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1258.65 1000)">L</text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1268.47 1000)">1 </text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1281.05 1000)">+ </text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1296.94 1000)">L</text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1306.76 1000)">3</text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1318.25 1000)">-</text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1326.34 1000)">lite </text><text fill="#D97706" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 1356.61 1000)">병렬</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="11" transform="matrix(1.38379 0 0 1.41275 1260.13 1024)">수정안 </text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="11" transform="matrix(1.38379 0 0 1.41275 1303.41 1024)">3</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="11" transform="matrix(1.38379 0 0 1.41275 1312.81 1024)">개 동시 검증</text><path d="M10.3784 5.53515C10.3784 8.21001 8.21001 10.3784 5.53515 10.3784 2.86029 10.3784 0.691894 8.21001 0.691894 5.53515 0.691894 2.86029 2.86029 0.691894 5.53515 0.691894 8.21001 0.691894 10.3784 2.86029 10.3784 5.53515Z" fill="#10B981" transform="matrix(1 0 0 1.02093 1287.2 1041.2)"/><path d="M35.2866 5.53515C35.2866 8.21001 33.1182 10.3784 30.4433 10.3784 27.7685 10.3784 25.6001 8.21001 25.6001 5.53515 25.6001 2.86029 27.7685 0.691894 30.4433 0.691894 33.1182 0.691894 35.2866 2.86029 35.2866 5.53515Z" fill="#F59E0B" transform="matrix(1 0 0 1.02093 1287.2 1041.2)"/><path d="M60.1948 5.53515C60.1948 8.21001 58.0263 10.3784 55.3515 10.3784 52.6766 10.3784 50.5082 8.21001 50.5082 5.53515 50.5082 2.86029 52.6766 0.691894 55.3515 0.691894 58.0263 0.691894 60.1948 2.86029 60.1948 5.53515Z" fill="#DC2626" transform="matrix(1 0 0 1.02093 1287.2 1041.2)"/><path d="M85.1029 5.53515C85.1029 8.21001 82.9345 10.3784 80.2597 10.3784 77.5848 10.3784 75.4164 8.21001 75.4164 5.53515 75.4164 2.86029 77.5848 0.691894 80.2597 0.691894 82.9345 0.691894 85.1029 2.86029 85.1029 5.53515Z" fill="#94A3B8" transform="matrix(1 0 0 1.02093 1287.2 1041.2)"/><path d="M1321.52 857.948 1148.54 857.948" stroke="#334155" stroke-width="3.04433" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 21.3103 10.6552 0 21.3103Z" fill="#334155" transform="matrix(-1 1.25028e-16 -1.22465e-16 -1.02093 1104.98 886.785)"/></g><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 1143.58 859)">Finalize</text><g><path d="M22.1406 11.0703 70.1119 11.0703 92.2525 33.2109 92.2525 99.6327 22.1406 99.6327Z" stroke="#0F172A" stroke-width="3.6901" fill="#FFFFFF" transform="matrix(1 0 0 1.02093 963.393 819.397)"/><path d="M70.1119 11.0703 70.1119 33.2109 92.2525 33.2109" stroke="#0F172A" stroke-width="3.6901" fill="#E2E8F0" transform="matrix(1 0 0 1.02093 963.393 819.397)"/><path d="M33.2109 51.6614 77.4921 51.6614" stroke="#94A3B8" stroke-width="3.6901" fill="none" transform="matrix(1 0 0 1.02093 963.393 819.397)"/><path d="M33.2109 66.4218 77.4921 66.4218" stroke="#94A3B8" stroke-width="3.6901" fill="none" transform="matrix(1 0 0 1.02093 963.393 819.397)"/><path d="M33.2109 81.1822 62.7317 81.1822" stroke="#94A3B8" stroke-width="3.6901" fill="none" transform="matrix(1 0 0 1.02093 963.393 819.397)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 960.889 969)">Response</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 995.652 1000)">JSON</text><path d="M1017.08 857.948 844.11 857.948" stroke="#334155" stroke-width="3.04433" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 21.3103 10.6552 0 21.3103Z" fill="#334155" transform="matrix(-1 1.25028e-16 -1.22465e-16 -1.02093 800.549 886.785)"/></g><text fill="#475569" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="13" transform="matrix(1.38379 0 0 1.41275 840.462 859)">Render</text><g><path d="M97.7876 18.4505C100.845 18.4505 103.323 20.9287 103.323 23.9856L103.323 79.3371C103.323 82.3941 100.845 84.8723 97.7876 84.8723L12.9153 84.8723C9.85837 84.8723 7.3802 82.3941 7.3802 79.3371L7.3802 23.9856C7.3802 20.9287 9.85837 18.4505 12.9153 18.4505Z" stroke="#0F172A" stroke-width="4.61262" fill="#FFFFFF" transform="matrix(1 0 0 1.02093 658.96 819.397)"/><path d="M14.7604 25.8307 95.9426 25.8307 95.9426 77.4921 14.7604 77.4921Z" fill="#DBEAFE" transform="matrix(1 0 0 1.02093 658.96 819.397)"/><path d="M40.5911 47.9713C40.5911 52.0473 37.2869 55.3515 33.2109 55.3515 29.1349 55.3515 25.8307 52.0473 25.8307 47.9713 25.8307 43.8953 29.1349 40.5911 33.2109 40.5911 37.2869 40.5911 40.5911 43.8953 40.5911 47.9713Z" fill="#10B981" transform="matrix(1 0 0 1.02093 658.96 819.397)"/><path d="M51.6614 36.901 88.5624 36.901 88.5624 42.4361 51.6614 42.4361Z" fill="#94A3B8" transform="matrix(1 0 0 1.02093 658.96 819.397)"/><path d="M51.6614 47.9713 81.1822 47.9713 81.1822 53.5064 51.6614 53.5064Z" fill="#94A3B8" transform="matrix(1 0 0 1.02093 658.96 819.397)"/><path d="M51.6614 59.0416 88.5624 59.0416 88.5624 64.5767 51.6614 64.5767Z" fill="#94A3B8" transform="matrix(1 0 0 1.02093 658.96 819.397)"/><path d="M40.5911 84.8723 70.1119 84.8723 77.4921 99.6327 33.2109 99.6327Z" fill="#0F172A" transform="matrix(1 0 0 1.02093 658.96 819.397)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="18" transform="matrix(1.38379 0 0 1.41275 702.234 969)">UI</text><text fill="#0078D4" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="13" transform="matrix(1.38379 0 0 1.41275 621.558 1000)">Azure Static Web App</text><path d="M712.651 857.948 297.514 857.948" stroke="#64748B" stroke-width="2.76757" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 19.373 9.68651 0 19.373Z" fill="#334155" transform="matrix(-1 1.25028e-16 -1.22465e-16 -1.02093 252.403 885.796)"/></g><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="12" transform="matrix(1.38379 0 0 1.41275 401.078 859)">GET </text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="12" transform="matrix(1.38379 0 0 1.41275 436.591 859)">/</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="12" transform="matrix(1.38379 0 0 1.41275 442.137 859)">report</text><g><path d="M19.373 9.68651 61.3479 9.68651 80.7209 29.0595 80.7209 87.1786 19.373 87.1786Z" stroke="#0F172A" stroke-width="3.22884" fill="#FFFFFF" transform="matrix(1 0 0 1.02093 133.12 833.524)"/><path d="M61.3479 9.68651 61.3479 29.0595 80.7209 29.0595" stroke="#0F172A" stroke-width="3.22884" fill="#E2E8F0" transform="matrix(1 0 0 1.02093 133.12 833.524)"/><path d="M29.0595 45.2037 67.8056 45.2037" stroke="#94A3B8" stroke-width="3.22884" fill="none" transform="matrix(1 0 0 1.02093 133.12 833.524)"/><path d="M29.0595 58.1191 67.8056 58.1191" stroke="#94A3B8" stroke-width="3.22884" fill="none" transform="matrix(1 0 0 1.02093 133.12 833.524)"/><path d="M29.0595 71.0344 54.8902 71.0344" stroke="#94A3B8" stroke-width="3.22884" fill="none" transform="matrix(1 0 0 1.02093 133.12 833.524)"/></g><text fill="#0F172A" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="15" transform="matrix(1.38379 0 0 1.41275 126.56 963)">PDF Report</text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="11" transform="matrix(1.38379 0 0 1.41275 122.885 989)">reportlab · </text><text fill="#64748B" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="400" font-size="11" transform="matrix(1.38379 0 0 1.41275 196.934 989)">앱 로직</text><path d="M1328.44 802.597 1328.44 768.002 837.191 768.002 837.191 262.92 1079.35 262.92 1079.35 276.757" stroke="#0891B2" stroke-width="2.21406" stroke-dasharray="8.30272 5.53515" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 15.4984 7.74921 0 15.4984Z" fill="#0891B2" transform="matrix(6.12323e-17 1.02093 -1 6.25141e-17 1026.49 269.892)"/></g><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 935.717 259)">L</text><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 944.026 259)">1 </text><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 954.67 259)">재확인</text><path d="M1439.14 802.597 1439.14 768.002 1964.98 768.002 1964.98 262.92 1688.22 262.92 1688.22 276.757" stroke="#0891B2" stroke-width="2.21406" stroke-dasharray="8.30272 5.53515" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 15.4984 7.74921 0 15.4984Z" fill="#0891B2" transform="matrix(6.12323e-17 1.02093 -1 6.25141e-17 1635.36 269.892)"/></g><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 1634.53 259)">L</text><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 1642.84 259)">3</text><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 1652.56 259)">-</text><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 1659.4 259)">lite </text><text fill="#0891B2" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="11" transform="matrix(1.38379 0 0 1.41275 1685.02 259)">재판정</text><path d="M1134.71 387.46 1176.22 387.46 1176.22 636.542 1383.79 636.542 1383.79 774.921 1625.95 774.921 1625.95 799.829" stroke="#F59E0B" stroke-width="3.32109" stroke-dasharray="9.68651 6.91894" fill="none" transform="matrix(1 0 0 1.02093 -60.6099 0)"/><g><path d="M0 0 23.2476 11.6238 0 23.2476Z" fill="#F59E0B" transform="matrix(6.12323e-17 1.02093 -1 6.25141e-17 1576.96 797.584)"/></g><path d="M189.579 0C199.514-2.4581e-15 207.568 8.05406 207.568 17.9892L207.568 17.9892C207.568 27.9244 199.514 35.9785 189.579 35.9785L17.9892 35.9785C8.05406 35.9785-4.9162e-15 27.9244-4.9162e-15 17.9892L-4.9162e-15 17.9892C-7.3743e-15 8.05406 8.05406-4.9162e-15 17.9892-4.9162e-15Z" stroke="#F59E0B" stroke-width="2.07568" fill="#FEF3C7" transform="matrix(1 0 0 1.02093 1115.61 604.658)"/><text fill="#92400E" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="12" transform="matrix(1.38379 0 0 1.41275 1131.72 630)">Fast Mode · L</text><text fill="#92400E" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="12" transform="matrix(1.38379 0 0 1.41275 1234.69 630)">2</text><text fill="#92400E" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="12" transform="matrix(1.38379 0 0 1.41275 1244.82 630)">/</text><text fill="#92400E" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="12" transform="matrix(1.38379 0 0 1.41275 1250.99 630)">L</text><text fill="#92400E" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="12" transform="matrix(1.38379 0 0 1.41275 1260.05 630)">3 </text><text fill="#92400E" font-family="Pretendard,Pretendard_MSFontService,sans-serif" font-weight="700" font-size="12" transform="matrix(1.38379 0 0 1.41275 1274.48 630)">skip</text></g></svg>
-![Uploading 그림1.svg…]()
 
+<img width="1920" height="1080" alt="그림1" src="https://github.com/user-attachments/assets/67b50f53-37eb-4df0-8357-f049fd9f5984" />
 
 ```mermaid
 flowchart TD
@@ -239,6 +347,107 @@ flowchart TD
 | 🔐 | Security | Azure Key Vault |
 | 📈 | Monitoring | Azure Application Insights |
 | 🧹 | Data Processing | Python Custom Chunker |
+
+<a id="folder-structure"></a>
+
+## 📁 Folder Structure
+
+```text
+TEAM1/
+├── .github/
+│   └── workflows/
+│       ├── azure-static-web-apps-proud-flower-0fc6d2900.yml
+│       └── main_9ai-2nd-team-app-service.yml
+│
+├── backend/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── clients/
+│   │   │   ├── docintel_client.py
+│   │   │   └── storage_client.py
+│   │   └── schemas/
+│   │       ├── request.py
+│   │       └── response.py
+│   │
+│   ├── configs/
+│   │   ├── blocklist.yaml
+│   │   └── search_index_schema.py
+│   │
+│   ├── data/
+│   │   └── fewshot/
+│   │       ├── cases.jsonl
+│   │       ├── copies.jsonl
+│   │       ├── copies_selection.jsonl
+│   │       ├── styles.jsonl
+│   │       └── styles_order.jsonl
+│   │
+│   ├── pipeline/
+│   │   ├── cascade.py
+│   │   ├── rule_engine.py
+│   │   ├── retriever.py
+│   │   ├── judge.py
+│   │   ├── l4_rewriter.py
+│   │   ├── l5_rejudge.py
+│   │   ├── product_context.py
+│   │   └── fewshot_selector.py
+│   │
+│   ├── prompts/
+│   │   ├── judge/
+│   │   │   ├── grounded.txt
+│   │   │   └── v0_base.txt
+│   │   ├── rewriter/
+│   │   │   ├── v3_dynamic.txt
+│   │   │   └── v4_yoonji.txt
+│   │   ├── judge_v1.txt
+│   │   ├── rewriter_v1.txt
+│   │   └── rewriter_full_v1.txt
+│   │
+│   ├── report_generator.py
+│   ├── pdf_design.py
+│   └── requirements.txt
+│
+├── frontend/
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── page.tsx
+│   │   │   ├── upload/page.tsx
+│   │   │   ├── result/page.tsx
+│   │   │   ├── history/page.tsx
+│   │   │   ├── admin/page.tsx
+│   │   │   └── api/
+│   │   │       ├── analyze/route.ts
+│   │   │       ├── analyze-stream/route.ts
+│   │   │       ├── ocr/route.ts
+│   │   │       ├── report/route.ts
+│   │   │       ├── feedback/route.ts
+│   │   │       ├── history/route.ts
+│   │   │       └── admin/route.ts
+│   │   │
+│   │   ├── components/
+│   │   │   ├── Navbar.tsx
+│   │   │   └── ui/button.tsx
+│   │   └── lib/utils.ts
+│   │
+│   ├── public/
+│   ├── package.json
+│   ├── next.config.ts
+│   └── tsconfig.json
+│
+└── README.md
+```
+
+| Icon | 경로 | 역할 |
+| --- | --- | --- |
+| 🚀 | `.github/workflows` | Azure Static Web Apps와 Azure App Service 배포 워크플로우 |
+| ⚙️ | `backend/app` | FastAPI 진입점, Azure 클라이언트, 요청/응답 스키마 |
+| 🧬 | `backend/pipeline` | L1 Rule Engine부터 L5 Re-Judge까지 5-Layer Cascade 핵심 로직 |
+| 🔎 | `backend/configs` | 금지어 목록과 Azure AI Search 인덱스 스키마 |
+| 🧪 | `backend/data/fewshot` | Judge/Rewriter 품질 개선을 위한 Few-shot 데이터 |
+| 💬 | `backend/prompts` | GPT-4.1 Judge/Rewriter 프롬프트 템플릿 |
+| 🧾 | `backend/report_generator.py` | 분석 결과 PDF 리포트 생성 |
+| 🎨 | `frontend/src/app` | 메인, 업로드, 결과, 히스토리, 관리자 페이지 |
+| 🔁 | `frontend/src/app/api` | 프론트엔드 API 라우트, SSE 스트리밍, OCR, 리포트, 피드백 연결 |
+| 🧩 | `frontend/src/components` | 공통 UI 컴포넌트 |
 
 <a id="data-and-metrics"></a>
 
@@ -338,7 +547,7 @@ AdGuard는 Microsoft Responsible AI 원칙을 서비스 기능에 반영했습�
 
 ## 🧾 Project Summary
 
-AdGuard는 Azure AI 기반 화장품 광고 검수 서비스입니다. 광고 카피, 이미지, PDF, URL을 입력하면 `text-embedding-3-large`와 Azure AI Search 기반 법령·의결서·가이드라인 RAG 검색으로 위반 가능성을 판정하고, GPT-4.1을 활용해 안전한 대체 카피 3종과 PDF 리포트를 제공합니다.
+AdGuard는 Azure AI & 클라우드 기반 화장품 광고 검수 서비스입니다. 광고 카피, 이미지, PDF, URL을 입력하면 `text-embedding-3-large`와 Azure AI Search 기반 법령·의결서·가이드라인 RAG 검색으로 위반 가능성을 판정하고, GPT-4.1을 활용해 안전한 대체 카피 3종과 PDF 리포트를 제공합니다.
 
 - 기간: 2026.04.13 ~ 2026.04.27
 - 기술: Azure OpenAI GPT-4.1, Azure OpenAI text-embedding-3-large, Azure AI Search, Azure Document Intelligence, FastAPI, Next.js, Azure App Service, Azure Static Web Apps
